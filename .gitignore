@@ -1,0 +1,9 @@
+node_modules
+.next
+out
+.env*
+.DS_Store
+service-account.json
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
