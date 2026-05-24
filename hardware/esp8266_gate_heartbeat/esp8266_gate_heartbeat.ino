@@ -80,7 +80,7 @@ const unsigned long WIEGAND_FRAME_GAP_MS = 35;
 
 // Heartbeat dikirim berkala agar aplikasi tahu gate masih online.
 unsigned long lastHeartbeatMillis = 0;
-const unsigned long HEARTBEAT_INTERVAL_MS = 3000;
+const unsigned long HEARTBEAT_INTERVAL_MS = 1000;
 unsigned long lastStatusLedMillis = 0;
 
 void ICACHE_RAM_ATTR handleWiegandD0() {
