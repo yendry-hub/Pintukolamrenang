@@ -178,12 +178,32 @@ void loop() {
 
 void connectToOpenWiFi() {
   WiFi.mode(WIFI_STA);
+  WiFi.persistent(true);
+
+  // Coba koneksi tersimpan (dari boot sebelumnya)
+  WiFi.begin();
+  Log.print("Mencoba koneksi tersimpan");
+  unsigned long start = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - start < 5000) {
+    delay(500);
+    Log.print(".");
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Log.println();
+    Log.print("Terhubung ke ");
+    Log.println(WiFi.SSID());
+    Log.print("IP: ");
+    Log.println(WiFi.localIP());
+    sendHeartbeat();
+    return;
+  }
+
+  Log.println(" gagal. Scan WiFi terbuka...");
   WiFi.disconnect();
   delay(100);
 
-  Log.println("Memindai WiFi terbuka...");
   int n = WiFi.scanNetworks();
-
   if (n == 0) {
     Log.println("Tidak ada WiFi. Jalan offline.");
     return;
@@ -208,7 +228,7 @@ void connectToOpenWiFi() {
   Log.println(targetSSID);
   WiFi.begin(targetSSID.c_str(), "");
 
-  unsigned long start = millis();
+  start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
     delay(500);
     Log.print(".");
