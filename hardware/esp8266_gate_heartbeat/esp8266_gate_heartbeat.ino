@@ -42,8 +42,8 @@ const char* HEARTBEAT_ENDPOINT = "https://pintukolamrenang.vercel.app/api/gate-h
 const char* GATE_SECRET = "meristarayakolamrenang";
 
 // Identitas gate. Untuk gate lain, ubah menjadi Gate-B, Gate-C, dst.
-const char* GATE_ID = "Gate-B";
-const char* GATE_NAME = "Gate B - Main Entrance";
+const char* GATE_ID = "Gate-A";
+const char* GATE_NAME = "Gate A - Main Entrance";
 const char* FIRMWARE_VERSION = "1.0.0";
 
 // Wiring ESP8266 NodeMCU:

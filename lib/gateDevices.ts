@@ -1,7 +1,7 @@
 import type admin from 'firebase-admin'
 import type { GateStatus } from '@/lib/types'
 
-const GATE_ONLINE_WINDOW_MS = 60_000
+const GATE_ONLINE_WINDOW_MS = 15_000
 
 function toDate(value: any): Date | null {
   if (!value) {
