@@ -140,7 +140,7 @@ export default function Home() {
                       {gateInfo?.name || gateId}
                     </div>
                     <span className="block text-[10px] opacity-70">
-                      {isLoading ? 'Membuka...' : fb?.msg || (isOnline ? 'Online' : 'Offline')}
+                      {isLoading ? 'Membuka...' : fb?.msg || (isOnline ? (gateInfo?.ipAddress || 'Online') : 'Offline')}
                     </span>
                   </button>
                 )

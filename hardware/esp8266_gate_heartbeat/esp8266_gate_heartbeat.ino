@@ -1,24 +1,49 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
 #include <ESP8266WebServer.h>
+#include <WiFiClientSecure.h>
+#include <ESP8266mDNS.h>
+
+// Ring buffer untuk log wireless (via browser http://<ip>/log)
+#define LOG_RING_SIZE 64
+String logRing[LOG_RING_SIZE];
+int logRingHead = 0;
+
+void pushLog(const String &s) {
+  logRing[logRingHead] = s;
+  logRingHead = (logRingHead + 1) % LOG_RING_SIZE;
+}
+
+// Forward log ke USB Serial + ring buffer (wireless)
+class LogClass : public Print {
+public:
+  size_t write(uint8_t c) override {
+    Serial.write(c);
+    _line += (char)c;
+    if (c == '\n') {
+      pushLog(_line);
+      _line = "";
+    }
+    return 1;
+  }
+private:
+  String _line;
+};
+LogClass Log;
 
 // Buat server lokal di port 80
 ESP8266WebServer server(80);
 
-// WiFi
-const char* WIFI_SSID = "Galaxy Tab A7 Lite 4552";
-const char* WIFI_PASSWORD = "WhiteKoffie";
-
-// Server Next.js. Ganti IP sesuai alamat laptop/server yang menjalankan aplikasi.
-const char* UID_ENDPOINT = "http://10.50.51.17:3000/api/uid";
-const char* HEARTBEAT_ENDPOINT = "http://10.50.51.17:3000/api/gate-heartbeat";
+// Server Next.js. Ganti URL sesuai hasil deploy.
+const char* UID_ENDPOINT = "https://pintukolamrenang.vercel.app/api/uid";
+const char* HEARTBEAT_ENDPOINT = "https://pintukolamrenang.vercel.app/api/gate-heartbeat";
 
 // Harus sama dengan ESP_GATE_SECRET di .env.local aplikasi.
 const char* GATE_SECRET = "meristarayakolamrenang";
 
 // Identitas gate. Untuk gate lain, ubah menjadi Gate-B, Gate-C, dst.
-const char* GATE_ID = "Gate-B";
-const char* GATE_NAME = "Gate B - Main Entrance";
+const char* GATE_ID = "Gate-A";
+const char* GATE_NAME = "Gate A - Main Entrance";
 const char* FIRMWARE_VERSION = "1.0.0";
 
 // Wiring ESP8266 NodeMCU:
@@ -35,6 +60,7 @@ const int STATUS_LED_PIN = LED_BUILTIN;
 const int RELAY_ACTIVE_LEVEL = LOW;
 const int RELAY_IDLE_LEVEL = HIGH;
 const unsigned long RELAY_OPEN_MS = 1000;
+const int RESET_CONFIG_PIN = 0; // Flash button (D3 / GPIO0) — tekan saat boot untuk reset WiFi
 const unsigned long UID_CONFIRM_TIMEOUT_MS = 2000;
 const unsigned long STATUS_LED_INTERVAL_MS = 5000;
 const unsigned long CARD_DETECTED_LED_MS = 120;
@@ -86,18 +112,49 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(WIEGAND_D0_PIN), handleWiegandD0, FALLING);
   attachInterrupt(digitalPinToInterrupt(WIEGAND_D1_PIN), handleWiegandD1, FALLING);
 
-  connectWiFi();
-  // Membuat endpoint "/open" yang menerima HTTP POST
-  server.on("/open", HTTP_POST, []() {
-    Serial.println("Perintah OPEN diterima dari Next.js!");
-    openGate(); // Memicu optocoupler
-    
-    // Memberi jawaban balik ke Next.js agar tombol di web tidak loading terus
-    server.send(200, "application/json", "{\"status\":\"OK\", \"message\":\"Gate A Opened\"}");
+  connectToOpenWiFi();
+
+  // mDNS — akses via http://gate-a.local/
+  if (WiFi.status() == WL_CONNECTED) {
+    String hostname = String(GATE_ID);
+    hostname.toLowerCase();
+    if (MDNS.begin(hostname.c_str())) {
+      MDNS.addService("http", "tcp", 80);
+      Log.print("mDNS: http://");
+      Log.print(hostname);
+      Log.println(".local/");
+    }
+    Log.print("Log: http://");
+    Log.print(WiFi.localIP().toString());
+    Log.println("/log");
+  }
+
+  // Endpoint "/log" — lihat log dari browser
+  server.on("/log", []() {
+    String html = "<!DOCTYPE html><html><head><meta charset='utf-8'><meta http-equiv='refresh' content='2'><title>";
+    html += GATE_ID;
+    html += " Log</title><style>body{background:#111;color:#0f0;font:13px monospace;padding:10px;white-space:pre-wrap;word-break:break-all}#h{color:#888;margin-bottom:10px}</style></head><body><div id='h'>";
+    html += GATE_ID;
+    html += " &mdash; <a href='/open' style='color:#0f0' onclick=\"fetch('/open',{method:'POST'});return false\">/open</a></div>";
+    int i = logRingHead;
+    for (int c = 0; c < LOG_RING_SIZE; c++) {
+      html += logRing[i];
+      i = (i + 1) % LOG_RING_SIZE;
+    }
+    html += "</body></html>";
+    server.send(200, "text/html; charset=utf-8", html);
   });
 
-  // Jalankan server
+  // Endpoint "/open" — buka gate via HTTP POST
+  server.on("/open", HTTP_POST, []() {
+    Log.println("Perintah OPEN diterima dari Next.js!");
+    openGate();
+    server.send(200, "application/json", "{\"status\":\"OK\", \"message\":\"Gate " + String(GATE_ID) + " Opened\"}");
+  });
+
+  // Mulai server
   server.begin();
+  Log.println("ESP siap.");
 
 }
 
@@ -106,40 +163,62 @@ void loop() {
   blinkStatusLedIfDue();
   readUidFromWiegand();
 
-  if (WiFi.status() != WL_CONNECTED) {
-    connectWiFi();
-    delay(1000);
-    return;
-  }
-
   if (millis() - lastHeartbeatMillis >= HEARTBEAT_INTERVAL_MS) {
-    sendHeartbeat();
+    if (WiFi.status() == WL_CONNECTED) {
+      sendHeartbeat();
+    } else {
+      Log.println("OFFLINE - tidak ada WiFi terbuka");
+      lastHeartbeatMillis = millis();
+    }
   }
 }
 
-void connectWiFi() {
-  if (WiFi.status() == WL_CONNECTED) {
+void connectToOpenWiFi() {
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  delay(100);
+
+  Log.println("Memindai WiFi terbuka...");
+  int n = WiFi.scanNetworks();
+
+  if (n == 0) {
+    Log.println("Tidak ada WiFi. Jalan offline.");
     return;
   }
 
-  Serial.print("Connecting WiFi");
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  String targetSSID = "";
+  for (int i = 0; i < n; ++i) {
+    if (WiFi.encryptionType(i) == ENC_TYPE_NONE) {
+      targetSSID = WiFi.SSID(i);
+      Log.print("Menemukan WiFi terbuka: ");
+      Log.println(targetSSID);
+      break;
+    }
+  }
+
+  if (targetSSID == "") {
+    Log.println("Tidak ada WiFi tanpa password. Jalan offline.");
+    return;
+  }
+
+  Log.print("Menghubungkan ke: ");
+  Log.println(targetSSID);
+  WiFi.begin(targetSSID.c_str(), "");
 
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
-    Serial.print(".");
     delay(500);
+    Log.print(".");
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println();
-    Serial.print("WiFi connected. IP: ");
-    Serial.println(WiFi.localIP());
+    Log.println();
+    Log.print("Terhubung! IP: ");
+    Log.println(WiFi.localIP());
     sendHeartbeat();
   } else {
-    Serial.println();
-    Serial.println("WiFi failed. Will retry.");
+    Log.println();
+    Log.println("Gagal terhubung. Jalan offline.");
   }
 }
 
@@ -157,13 +236,13 @@ void readUidFromWiegand() {
 
   String uid = parseWiegandUid(rawData, bitCount);
   if (uid.length() == 0) {
-    Serial.print("UNSUPPORTED WIEGAND BITS: ");
-    Serial.println(bitCount);
+    Log.print("UNSUPPORTED WIEGAND BITS: ");
+    Log.println(bitCount);
     return;
   }
 
   if (uid == lastUid && millis() - lastScanMillis < SCAN_COOLDOWN_MS) {
-    Serial.println("DOUBLE TAP IGNORED");
+    Log.println("DOUBLE TAP IGNORED");
     return;
   }
 
@@ -199,13 +278,19 @@ void flashCardDetectedLed() {
 }
 
 void sendHeartbeat() {
-  HTTPClient http;
-  WiFiClient client;
+  if (WiFi.status() != WL_CONNECTED) {
+    return;
+  }
 
-  client.setTimeout(200); 
+  HTTPClient http;
+  WiFiClientSecure client;
+
+  client.setInsecure();
+  client.setTimeout(200);
 
   http.begin(client, HEARTBEAT_ENDPOINT);
-  http.setTimeout(200);
+  http.setTimeout(1000);
+  http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
 
   http.addHeader("Content-Type", "application/json");
 
@@ -219,10 +304,10 @@ void sendHeartbeat() {
 
   int httpCode = http.POST(payload);
   if (httpCode == HTTP_CODE_OK) {
-    Serial.println("HEARTBEAT OK");
+    Log.println("HEARTBEAT OK");
   } else {
-    Serial.print("HEARTBEAT SENT (No wait): ");
-    Serial.println(httpCode);
+    Log.print("HEARTBEAT SENT (No wait): ");
+    Log.println(httpCode);
   }
 
   lastHeartbeatMillis = millis();
@@ -230,12 +315,20 @@ void sendHeartbeat() {
 }
 
 void sendUid(const String& uid) {
-  HTTPClient http;
-  WiFiClient client;
+  if (WiFi.status() != WL_CONNECTED) {
+    Log.println("SCAN OFFLINE — relay open (fail-open)");
+    openGate();
+    return;
+  }
 
+  HTTPClient http;
+  WiFiClientSecure client;
+
+  client.setInsecure();
   client.setTimeout(UID_CONFIRM_TIMEOUT_MS / 1000);
   http.begin(client, UID_ENDPOINT);
   http.setTimeout(UID_CONFIRM_TIMEOUT_MS);
+  http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
   http.addHeader("Content-Type", "application/json");
 
   String payload = "{";
@@ -249,15 +342,15 @@ void sendUid(const String& uid) {
   String response = http.getString();
   bool requestTimedOut = millis() - requestStartMillis >= UID_CONFIRM_TIMEOUT_MS;
 
-  Serial.print("SCAN RESPONSE ");
-  Serial.print(httpCode);
-  Serial.print(": ");
-  Serial.println(response);
+  Log.print("SCAN RESPONSE ");
+  Log.print(httpCode);
+  Log.print(": ");
+  Log.println(response);
 
   if (httpCode == HTTP_CODE_OK && response.indexOf("OPEN") >= 0) {
     openGate();
   } else if (httpCode <= 0 || requestTimedOut) {
-    Serial.println("NO OPEN CONFIRM WITHIN 2 SECONDS. FAIL-OPEN RELAY.");
+    Log.println("NO OPEN CONFIRM WITHIN 2 SECONDS. FAIL-OPEN RELAY.");
     openGate();
   }
 
@@ -268,7 +361,7 @@ void openGate() {
   digitalWrite(RELAY_PIN, RELAY_ACTIVE_LEVEL);
   delay(RELAY_OPEN_MS);
   digitalWrite(RELAY_PIN, RELAY_IDLE_LEVEL);
-  Serial.println("GATE OPENED");
+  Log.println("GATE OPENED");
 }
 
 void blinkStatusLedIfDue() {

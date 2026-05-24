@@ -26,7 +26,8 @@ export async function getGateStatus(db: admin.firestore.Firestore): Promise<Gate
       gateId: String(data.gateId || doc.id),
       name: String(data.name || data.gateId || doc.id),
       online,
-      lastSeen: lastSeenDate ? lastSeenDate.toISOString() : null
+      lastSeen: lastSeenDate ? lastSeenDate.toISOString() : null,
+      ipAddress: data.ipAddress ? String(data.ipAddress) : null
     }
   })
 

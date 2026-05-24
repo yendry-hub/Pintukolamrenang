@@ -13,6 +13,7 @@ export type GateStatus = {
     name: string
     online: boolean
     lastSeen: string | null
+    ipAddress?: string | null
   }>
 }
 
