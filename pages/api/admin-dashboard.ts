@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import initFirebaseAdmin from '@/lib/firebaseAdmin'
 import { getGateStatus } from '@/lib/gateDevices'
+import { getTodayStartJakarta, getTodayEndJakarta } from '@/lib/dateUtils'
 import type { GateStatus, ScanLog, TicketStats, TicketType } from '@/lib/types'
 
 const admin = initFirebaseAdmin()
@@ -17,20 +18,6 @@ function toDate(value: any): Date {
 
 function getGateLabel(gateId: string, status: GateStatus): string {
   return status.gates?.find((gate) => gate.gateId === gateId)?.name || gateId
-}
-
-function formatScanLog(doc: FirebaseFirestore.QueryDocumentSnapshot, status: GateStatus): ScanLog {
-  const data = doc.data() as Record<string, any>
-  const createdAt = toDate(data.createdAt || data.scannedAt)
-  const gateId = String(data.gateId || data.gate || 'Unknown')
-
-  return {
-    uid: String(data.uid || 'Unknown'),
-    ticketType: ensureTicketType(data.ticketType),
-    gate: getGateLabel(gateId, status),
-    status: String(data.status || 'INVALID') as ScanLog['status'],
-    scannedAt: createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  }
 }
 
 function ensureTicketType(value: unknown): TicketType {
@@ -65,40 +52,71 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     const db = admin.firestore()
-    const now = new Date()
-    const todayStart = new Date(now)
-    todayStart.setHours(0, 0, 0, 0)
+    const todayStart = getTodayStartJakarta()
+    const todayEnd = getTodayEndJakarta()
 
     const rangeStart = new Date(todayStart)
     rangeStart.setDate(todayStart.getDate() - 4)
 
-    const scanLogsQuery = db
-      .collection('scanLogs')
-      .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(rangeStart))
-      .orderBy('createdAt', 'desc')
-      .limit(50)
-
-    const [scanLogsSnap, activeMembersSnap] = await Promise.all([
-      scanLogsQuery.get(),
-      db.collection('rfidCards').where('active', '==', true).get()
+    const [todayScansSnap, activeMembersSnap, trendSnap] = await Promise.all([
+      db
+        .collection('scanLogs')
+        .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(todayStart))
+        .where('createdAt', '<', admin.firestore.Timestamp.fromDate(todayEnd))
+        .orderBy('createdAt', 'desc')
+        .limit(50)
+        .get(),
+      db.collection('rfidCards').where('active', '==', true).get(),
+      db
+        .collection('scanLogs')
+        .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(rangeStart))
+        .orderBy('createdAt', 'desc')
+        .limit(50)
+        .get()
     ])
+
+    // Fetch today's transaction summary (WIB timezone)
+    let todayTransactionCount = 0
+    let todayRevenue = 0
+    try {
+      const todayTransactionsSnap = await db
+        .collection('transactions')
+        .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(todayStart))
+        .where('createdAt', '<', admin.firestore.Timestamp.fromDate(todayEnd))
+        .get()
+
+      todayTransactionsSnap.forEach((doc) => {
+        const data = doc.data()
+        todayTransactionCount++
+        todayRevenue += Number(data.price) || 0
+      })
+    } catch (txErr) {
+      console.error('Failed to fetch transactions (index may be missing):', txErr)
+    }
 
     const status: GateStatus = await getGateStatus(db)
     const hourlyTrend = Array(7).fill(0)
     const dailyTrend = Array(5).fill(0)
-    let totalVisitorsToday = 0
 
-    const scanLogs = scanLogsSnap.docs.map((doc) => {
+    trendSnap.docs.forEach((doc) => {
       const data = doc.data() as Record<string, any>
       const scanDate = toDate(data.createdAt || data.scannedAt)
-      const hoursAgo = Math.floor((now.getTime() - scanDate.getTime()) / 3600000)
-      const scanDay = new Date(scanDate)
-      scanDay.setHours(0, 0, 0, 0)
-      const dayDiff = Math.floor((todayStart.getTime() - scanDay.getTime()) / 86400000)
+      const scanInJakarta = new Date(scanDate.getTime() + 7 * 60 * 60 * 1000)
+      const nowInJakarta = new Date(Date.now() + 7 * 60 * 60 * 1000)
 
-      if (scanDate >= todayStart) {
-        totalVisitorsToday += 1
-      }
+      const hoursAgo = Math.floor((nowInJakarta.getTime() - scanInJakarta.getTime()) / 3600000)
+
+      const scanDayStart = new Date(Date.UTC(
+        scanInJakarta.getUTCFullYear(),
+        scanInJakarta.getUTCMonth(),
+        scanInJakarta.getUTCDate()
+      ))
+      const todayDayStart = new Date(Date.UTC(
+        nowInJakarta.getUTCFullYear(),
+        nowInJakarta.getUTCMonth(),
+        nowInJakarta.getUTCDate()
+      ))
+      const dayDiff = Math.floor((todayDayStart.getTime() - scanDayStart.getTime()) / 86400000)
 
       if (hoursAgo >= 0 && hoursAgo < 7) {
         hourlyTrend[6 - hoursAgo] += 1
@@ -107,24 +125,42 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (dayDiff >= 0 && dayDiff < 5) {
         dailyTrend[4 - dayDiff] += 1
       }
+    })
+
+    const scanLogs = todayScansSnap.docs.map((doc) => {
+      const data = doc.data() as Record<string, any>
+      const scanDate = toDate(data.createdAt || data.scannedAt)
+      const scanInJakarta = new Date(scanDate.getTime() + 7 * 60 * 60 * 1000)
+      const nowInJakarta = new Date(Date.now() + 7 * 60 * 60 * 1000)
 
       return {
         uid: String(data.uid || 'Unknown'),
         ticketType: ensureTicketType(data.ticketType),
         gate: getGateLabel(String(data.gateId || data.gate || 'Unknown'), status),
         status: String(data.status || 'INVALID') as ScanLog['status'],
-        scannedAt: scanDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        scannedAt: scanDate.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' }),
+        scannedDate: scanInJakarta.getUTCFullYear() !== nowInJakarta.getUTCFullYear() || scanInJakarta.getUTCMonth() !== nowInJakarta.getUTCMonth() || scanInJakarta.getUTCDate() !== nowInJakarta.getUTCDate()
+          ? scanDate.toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta', day: 'numeric', month: 'short' })
+          : undefined
       }
     })
 
     const stats: TicketStats = {
-      totalVisitorsToday,
+      totalVisitorsToday: todayScansSnap.size,
       hourlyTrend,
       dailyTrend,
       activeMembers: activeMembersSnap.size
     }
 
-    return res.status(200).json({ status, stats, recentScans: scanLogs })
+    return res.status(200).json({
+      status,
+      stats,
+      recentScans: scanLogs,
+      todaySummary: {
+        transactionCount: todayTransactionCount,
+        revenue: todayRevenue
+      }
+    })
   } catch (error: any) {
     console.error('/api/admin-dashboard error:', error)
     return res.status(500).json({ error: error?.message || 'Gagal memuat data dashboard' })

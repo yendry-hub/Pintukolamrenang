@@ -19,6 +19,10 @@ type KasirDashboardResponse = {
   status: GateStatus
   stats: TicketStats
   recentScans: ScanLog[]
+  todaySummary?: {
+    transactionCount: number
+    revenue: number
+  }
 }
 
 const initialStats: TicketStats = {
@@ -28,9 +32,9 @@ const initialStats: TicketStats = {
   activeMembers: 0
 }
 
-const TICKET_TYPES: TicketType[] = ['Tiket Harian', 'Member', 'VIP', 'Paket Keluarga', 'Tiket Anak', 'Tiket Dewasa']
-const PAYMENT_METHODS = ['Tunai', 'Kartu Debit', 'Kartu Kredit', 'E-Wallet']
-const DEFAULT_TICKET_PRICES: Record<TicketType, number> = {
+const DEFAULT_TICKET_TYPES: string[] = ['Tiket Harian', 'Member', 'VIP', 'Paket Keluarga', 'Tiket Anak', 'Tiket Dewasa']
+const DEFAULT_PAYMENT_METHODS = ['Tunai', 'Kartu Debit', 'Kartu Kredit', 'E-Wallet']
+const DEFAULT_TICKET_PRICES: Record<string, number> = {
   'Tiket Harian': 50000,
   Member: 100000,
   VIP: 75000,
@@ -58,16 +62,48 @@ export default function KasirPage() {
   const [authInitialized, setAuthInitialized] = useState(false)
 
   const [cardUid, setCardUid] = useState('')
-  const [selectedTicketType, setSelectedTicketType] = useState<TicketType>('Tiket Harian')
+  const [selectedTicketType, setSelectedTicketType] = useState<string>('Tiket Harian')
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('Tunai')
   const [quantity, setQuantity] = useState<number>(1)
   const [transactionLoading, setTransactionLoading] = useState(false)
   const [receipt, setReceipt] = useState<string | null>(null)
-  const [view, setView] = useState<'dashboard' | 'transaksi' | 'ringkasan' | 'riwayat'>('dashboard')
-  const [ticketPrices, setTicketPrices] = useState<Record<TicketType, number>>(DEFAULT_TICKET_PRICES)
+  const [view, setView] = useState<'dashboard' | 'transaksi' | 'ringkasan' | 'riwayat' | 'grafik'>('dashboard')
+  const [ticketPrices, setTicketPrices] = useState<Record<string, number>>(DEFAULT_TICKET_PRICES)
   const [offlineMode, setOfflineMode] = useState(false)
   const [pendingTransactions, setPendingTransactions] = useState(0)
   const [cashierEmail, setCashierEmail] = useState<string | null>(null)
+  const [ticketTypes, setTicketTypes] = useState<string[]>([])
+  const [paymentMethods, setPaymentMethods] = useState<string[]>([])
+  const [todaySummary, setTodaySummary] = useState<{ transactionCount: number; revenue: number }>({ transactionCount: 0, revenue: 0 })
+
+  const fetchConfig = async () => {
+    try {
+      const res = await fetch('/api/get-ticket-config')
+      if (res.ok) {
+        const data = await res.json()
+        if (data.ticketTypes && data.ticketTypes.length > 0) {
+          setTicketTypes(data.ticketTypes)
+          cacheJson('ticketTypes', data.ticketTypes)
+        }
+        if (data.paymentMethods && data.paymentMethods.length > 0) {
+          setPaymentMethods(data.paymentMethods)
+          cacheJson('paymentMethods', data.paymentMethods)
+        }
+        if (data.prices) {
+          setTicketPrices(data.prices)
+          cacheJson('ticketPrices', data.prices)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch config:', err)
+      const cachedTypes = getCachedJson<string[]>('ticketTypes')
+      if (cachedTypes) setTicketTypes(cachedTypes)
+      const cachedMethods = getCachedJson<string[]>('paymentMethods')
+      if (cachedMethods) setPaymentMethods(cachedMethods)
+      const cachedPrices = getCachedJson<Record<string, number>>('ticketPrices')
+      if (cachedPrices) setTicketPrices(cachedPrices)
+    }
+  }
 
   const fetchPrices = async () => {
     try {
@@ -80,7 +116,7 @@ export default function KasirPage() {
       }
     } catch (err) {
       console.error('Failed to fetch prices:', err)
-      const cachedPrices = getCachedJson<Record<TicketType, number>>('ticketPrices')
+      const cachedPrices = getCachedJson<Record<string, number>>('ticketPrices')
       if (cachedPrices) {
         setTicketPrices(cachedPrices)
       }
@@ -107,7 +143,7 @@ export default function KasirPage() {
       setCashierEmail(user.email || null)
       setOfflineSession(user.email || 'kasir', 'kasir', false)
       fetchDashboard()
-      fetchPrices()
+      fetchConfig()
       syncOfflineTransactions()
     })
 
@@ -119,7 +155,7 @@ export default function KasirPage() {
       setOfflineMode(false)
       syncOfflineTransactions()
       fetchDashboard()
-      fetchPrices()
+      fetchConfig()
     }
     const handleOffline = () => setOfflineMode(true)
 
@@ -134,9 +170,15 @@ export default function KasirPage() {
     }
   }, [])
 
+  useEffect(() => {
+    if (view === 'ringkasan' || view === 'riwayat') {
+      fetchDashboard()
+    }
+  }, [view])
+
   const loadCachedKasirData = () => {
     const cachedDashboard = getCachedJson<KasirDashboardResponse>('kasirDashboard')
-    const cachedPrices = getCachedJson<Record<TicketType, number>>('ticketPrices')
+    const cachedPrices = getCachedJson<Record<string, number>>('ticketPrices')
 
     if (cachedDashboard) {
       setStatus(cachedDashboard.status)
@@ -203,6 +245,7 @@ export default function KasirPage() {
       setStatus(payload.status)
       setStats(payload.stats)
       setRecentScans(payload.recentScans)
+      if (payload.todaySummary) setTodaySummary(payload.todaySummary)
       cacheJson('kasirDashboard', payload)
     } catch (err: any) {
       const cachedDashboard = getCachedJson<KasirDashboardResponse>('kasirDashboard')
@@ -234,7 +277,7 @@ export default function KasirPage() {
     setTransactionLoading(true)
     const transactionPayload = {
       uid: cardUid,
-      ticketType: selectedTicketType,
+      ticketType: selectedTicketType as TicketType,
       price: ticketPrices[selectedTicketType],
       quantity,
       total: ticketPrices[selectedTicketType] * quantity,
@@ -361,6 +404,8 @@ export default function KasirPage() {
     )
   }
 
+  const chartMaxValue = Math.max(...stats.hourlyTrend, ...stats.dailyTrend, 1)
+
   return (
     <main className="min-h-screen bg-slate-100 text-slate-900">
       <div className="mx-auto max-w-7xl px-4 py-8">
@@ -374,8 +419,8 @@ export default function KasirPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <button onClick={fetchPrices} className="rounded-2xl bg-sky-100 px-4 py-2 text-sky-700 shadow-soft hover:bg-sky-200" title="Refresh harga dari server">
-              Refresh Harga
+            <button onClick={fetchConfig} className="rounded-2xl bg-sky-100 px-4 py-2 text-sky-700 shadow-soft hover:bg-sky-200" title="Refresh data dari server">
+              Refresh Data
             </button>
             <button onClick={handleLogout} className="rounded-2xl bg-white px-4 py-2 text-slate-700 shadow-soft hover:bg-slate-50">
               Logout
@@ -414,6 +459,12 @@ export default function KasirPage() {
                   className={`w-full text-left rounded-xl px-4 py-2 hover:bg-slate-50 ${view === 'riwayat' ? 'bg-slate-100 font-semibold' : ''}`}
                 >
                   Riwayat Scan
+                </button>
+                <button
+                  onClick={() => setView('grafik')}
+                  className={`w-full text-left rounded-xl px-4 py-2 hover:bg-slate-50 ${view === 'grafik' ? 'bg-slate-100 font-semibold' : ''}`}
+                >
+                  Grafik Tren
                 </button>
               </nav>
             </div>
@@ -470,7 +521,7 @@ export default function KasirPage() {
                           <div key={scan.uid + scan.scannedAt} className="rounded-3xl border border-slate-200 p-4">
                             <div className="flex flex-wrap items-center justify-between gap-3">
                               <span className="font-semibold">{scan.ticketType}</span>
-                              <span className="text-sm text-slate-500">{scan.scannedAt}</span>
+                              <span className="text-sm text-slate-500">{scan.scannedDate ? `${scan.scannedDate} ` : ''}{scan.scannedAt}</span>
                             </div>
                             <div className="mt-2 flex flex-wrap gap-3 text-sm text-slate-600">
                               <span>UID: {scan.uid}</span>
@@ -530,11 +581,11 @@ export default function KasirPage() {
                       <label className="block text-sm font-medium text-slate-700 mb-2">Jenis Tiket</label>
                       <select
                         value={selectedTicketType}
-                        onChange={(e) => setSelectedTicketType(e.target.value as TicketType)}
+                        onChange={(e) => setSelectedTicketType(e.target.value)}
                         className="w-full rounded-2xl border border-slate-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-sky-500"
                         disabled={transactionLoading}
                       >
-                        {TICKET_TYPES.map((type) => (
+                        {(ticketTypes.length ? ticketTypes : DEFAULT_TICKET_TYPES).map((type) => (
                           <option key={type} value={type}>
                             {type}
                           </option>
@@ -576,7 +627,7 @@ export default function KasirPage() {
                         className="w-full rounded-2xl border border-slate-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-sky-500"
                         disabled={transactionLoading}
                       >
-                        {PAYMENT_METHODS.map((method) => (
+                        {(paymentMethods.length ? paymentMethods : DEFAULT_PAYMENT_METHODS).map((method) => (
                           <option key={method} value={method}>
                             {method}
                           </option>
@@ -598,14 +649,33 @@ export default function KasirPage() {
 
             {view === 'ringkasan' && (
               <div className="rounded-3xl bg-white p-6 shadow-soft max-w-lg">
-                <h2 className="text-lg font-semibold">Ringkasan Kasir</h2>
-                <div className="mt-6 space-y-4 text-sm text-slate-600">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-lg font-semibold">Ringkasan Kasir</h2>
+                  <button
+                    onClick={fetchDashboard}
+                    disabled={loading}
+                    className="rounded-2xl bg-sky-600 px-4 py-2 text-sm text-white hover:bg-sky-700 disabled:opacity-50"
+                  >
+                    {loading ? 'Memuat...' : 'Refresh'}
+                  </button>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2 mb-6">
+                  <div className="rounded-2xl bg-sky-50 border border-sky-100 p-4">
+                    <p className="text-xs text-sky-600 uppercase font-bold tracking-wider">Transaksi Hari Ini</p>
+                    <p className="text-2xl font-bold text-sky-900">{todaySummary.transactionCount}</p>
+                  </div>
+                  <div className="rounded-2xl bg-emerald-50 border border-emerald-100 p-4">
+                    <p className="text-xs text-emerald-600 uppercase font-bold tracking-wider">Pendapatan Hari Ini</p>
+                    <p className="text-2xl font-bold text-emerald-900">Rp {todaySummary.revenue.toLocaleString('id-ID')}</p>
+                  </div>
+                </div>
+                <div className="space-y-4 text-sm text-slate-600">
                   <div className="flex items-center justify-between rounded-2xl bg-slate-50 p-4">
-                    <span>Scan terbaru</span>
+                    <span>Total Scan</span>
                     <strong>{recentScans.length}</strong>
                   </div>
                   <div className="flex items-center justify-between rounded-2xl bg-slate-50 p-4">
-                    <span>Jumlah anggota aktif</span>
+                    <span>Anggota Aktif</span>
                     <strong>{stats.activeMembers}</strong>
                   </div>
                 </div>
@@ -619,6 +689,13 @@ export default function KasirPage() {
                     <h2 className="text-lg font-semibold">Riwayat Scan</h2>
                     <p className="text-sm text-slate-500">Scan terbaru untuk kasir</p>
                   </div>
+                  <button
+                    onClick={fetchDashboard}
+                    disabled={loading}
+                    className="rounded-2xl bg-sky-600 px-4 py-2 text-sm text-white hover:bg-sky-700 disabled:opacity-50"
+                  >
+                    {loading ? 'Memuat...' : 'Refresh'}
+                  </button>
                 </div>
 
                 {loading ? (
@@ -631,7 +708,7 @@ export default function KasirPage() {
                       <div key={scan.uid + scan.scannedAt} className="rounded-3xl border border-slate-200 p-4">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <span className="font-semibold">{scan.ticketType}</span>
-                          <span className="text-sm text-slate-500">{scan.scannedAt}</span>
+                          <span className="text-sm text-slate-500">{scan.scannedDate ? `${scan.scannedDate} ` : ''}{scan.scannedAt}</span>
                         </div>
                         <div className="mt-2 flex flex-wrap gap-3 text-sm text-slate-600">
                           <span>UID: {scan.uid}</span>
@@ -642,6 +719,72 @@ export default function KasirPage() {
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {view === 'grafik' && (
+              <div className="rounded-3xl bg-white p-6 shadow-soft">
+                <div className="mb-5 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold">Grafik Tren</h2>
+                    <p className="text-sm text-slate-500">7 jam dan 5 hari terakhir</p>
+                  </div>
+                  <button
+                    onClick={fetchDashboard}
+                    disabled={loading}
+                    className="rounded-2xl bg-sky-600 px-4 py-2 text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Refresh
+                  </button>
+                </div>
+
+                <div className="grid gap-8 md:grid-cols-2">
+                  <div>
+                    <p className="mb-4 text-sm font-semibold text-slate-600 uppercase tracking-wider">Hourly Trend</p>
+                    <div className="space-y-3">
+                      {stats.hourlyTrend.map((value, index) => {
+                        const label = index === 6 ? 'Now' : `${6 - index}h`
+                        const barWidth = chartMaxValue > 0 ? (value / chartMaxValue) * 100 : 0
+                        return (
+                          <div key={index} className="flex items-center gap-3">
+                            <span className="w-8 text-right text-xs font-medium text-slate-500 shrink-0">{label}</span>
+                            <div className="flex-1 h-7 rounded-xl bg-slate-100 overflow-hidden">
+                              <div
+                                className="h-full rounded-xl bg-gradient-to-r from-sky-500 to-sky-400 transition-all duration-500 flex items-center justify-end px-2"
+                                style={{ width: `${Math.max(barWidth, value > 0 ? 8 : 0)}%` }}
+                              >
+                                {value > 0 && <span className="text-[10px] font-bold text-white drop-shadow-sm">{value}</span>}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="mb-4 text-sm font-semibold text-slate-600 uppercase tracking-wider">Daily Trend</p>
+                    <div className="space-y-3">
+                      {stats.dailyTrend.map((value, index) => {
+                        const label = `${4 - index}d`
+                        const barWidth = chartMaxValue > 0 ? (value / chartMaxValue) * 100 : 0
+                        return (
+                          <div key={index} className="flex items-center gap-3">
+                            <span className="w-8 text-right text-xs font-medium text-slate-500 shrink-0">{label}</span>
+                            <div className="flex-1 h-7 rounded-xl bg-slate-100 overflow-hidden">
+                              <div
+                                className="h-full rounded-xl bg-gradient-to-r from-indigo-500 to-indigo-400 transition-all duration-500 flex items-center justify-end px-2"
+                                style={{ width: `${Math.max(barWidth, value > 0 ? 8 : 0)}%` }}
+                              >
+                                {value > 0 && <span className="text-[10px] font-bold text-white drop-shadow-sm">{value}</span>}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </section>

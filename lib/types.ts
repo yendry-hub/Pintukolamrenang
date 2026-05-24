@@ -22,6 +22,7 @@ export type ScanLog = {
   gate: string
   status: 'VALID' | 'INVALID' | 'NOT_REGISTERED' | 'OFFLINE' | 'EXPIRED'
   scannedAt: string
+  scannedDate?: string
 }
 
 export type TicketStats = {
@@ -38,9 +39,20 @@ export type Transaction = {
   uid: string
   ticketType: TicketType
   price: number
+  quantity: number
+  total: number
   cashier: string
   paymentMethod: string
   paymentStatus: PaymentStatus
   createdAt: string
   receiptPrinted: boolean
+}
+
+export type PrintoutConfig = {
+  placeName: string
+  address: string
+  phone: string
+  headerText: string
+  footerMessage1: string
+  footerMessage2: string
 }

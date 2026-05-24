@@ -1,8 +1,9 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { scanTicket } from '@/lib/scanService'
 import StatusCard from '@/components/StatusCard'
 import type { GateStatus, ScanLog } from '@/lib/types'
+
+const GATE_SECRET = process.env.NEXT_PUBLIC_ESP_GATE_SECRET || ''
 
 export default function Home() {
   const [status, setStatus] = useState<GateStatus>({ online: true, lastSeen: null, currentGate: 'Gate-A' })
@@ -10,6 +11,31 @@ export default function Home() {
   const [recent, setRecent] = useState<ScanLog[]>([])
   const [firebaseConnected, setFirebaseConnected] = useState<boolean | null>(null)
   const [firebaseMsg, setFirebaseMsg] = useState<string | null>(null)
+  const [gateLoading, setGateLoading] = useState<string | null>(null)
+  const [gateFeedback, setGateFeedback] = useState<{ gateId: string; ok: boolean; msg: string } | null>(null)
+
+  const handleOpenGate = async (gateId: string) => {
+    setGateLoading(gateId)
+    setGateFeedback(null)
+    try {
+      const res = await fetch('/api/open-gate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gateId, secret: GATE_SECRET })
+      })
+      const data = await res.json()
+      if (data?.result === 'OPEN') {
+        setGateFeedback({ gateId, ok: true, msg: 'Gate opened!' })
+      } else {
+        setGateFeedback({ gateId, ok: false, msg: data?.reason || data?.error || 'Gagal' })
+      }
+    } catch {
+      setGateFeedback({ gateId, ok: false, msg: 'Gagal terhubung' })
+    } finally {
+      setGateLoading(null)
+    }
+    setTimeout(() => setGateFeedback(null), 3000)
+  }
 
   useEffect(() => {
     const fetchGateStatus = () => {
@@ -83,17 +109,50 @@ export default function Home() {
         </div>
 
         <section className="mt-10 rounded-3xl bg-white p-6 shadow-soft">
+          <div className="mb-6">
+            <h2 className="text-xl font-semibold">Kontrol Gate</h2>
+            <p className="text-sm text-slate-500">Buka gate berdasarkan status koneksi</p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              {['Gate-A', 'Gate-B'].map((gateId) => {
+                const gateInfo = status.gates?.find((g) => g.gateId === gateId)
+                const isOnline = gateInfo !== undefined ? gateInfo.online : status.online
+                const isLoading = gateLoading === gateId
+                const fb = gateFeedback?.gateId === gateId ? gateFeedback : null
+                return (
+                  <button
+                    key={gateId}
+                    onClick={() => handleOpenGate(gateId)}
+                    disabled={!isOnline || isLoading}
+                    className={`rounded-xl px-5 py-3 font-medium transition-all ${
+                      !isOnline
+                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                        : isLoading
+                        ? 'bg-emerald-500 text-white cursor-wait'
+                        : fb?.ok
+                        ? 'bg-green-600 text-white'
+                        : fb
+                        ? 'bg-red-500 text-white'
+                        : 'bg-emerald-600 text-white shadow-soft hover:bg-emerald-700 active:scale-95'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className={`h-2 w-2 rounded-full ${isOnline ? 'bg-green-300 animate-pulse' : 'bg-slate-400'}`} />
+                      {gateInfo?.name || gateId}
+                    </div>
+                    <span className="block text-[10px] opacity-70">
+                      {isLoading ? 'Membuka...' : fb?.msg || (isOnline ? 'Online' : 'Offline')}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
           <div className="mb-6 flex items-center justify-between">
             <div>
               <h2 className="text-xl font-semibold">Riwayat Scan Terakhir</h2>
               <p className="text-sm text-slate-500">Data realtime dari Firestore / local queue</p>
             </div>
-            <button
-              onClick={() => scanTicket('04A6F02B88', 'Gate-A')}
-              className="rounded-xl bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700"
-            >
-              Test Simulasi Scan
-            </button>
           </div>
 
           <div className="space-y-2">

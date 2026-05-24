@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import initFirebaseAdmin from '@/lib/firebaseAdmin'
+import { triggerGateHttp } from '@/lib/gateHttp'
 
 const admin = initFirebaseAdmin()
 
@@ -63,6 +64,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         lastUsedAt: admin.firestore.FieldValue.serverTimestamp(),
         used: true
       })
+
+      // Fire-and-forget: perintahkan ESP untuk buka gate
+      triggerGateHttp(db, String(gateId)).catch((err) => {
+        console.error(`Failed to trigger gate ${gateId}:`, err)
+      })
+
       return res.status(200).json({ result: 'OPEN' })
     }
 

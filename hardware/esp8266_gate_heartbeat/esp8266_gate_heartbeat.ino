@@ -1,5 +1,9 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
+#include <ESP8266WebServer.h>
+
+// Buat server lokal di port 80
+ESP8266WebServer server(80);
 
 // WiFi
 const char* WIFI_SSID = "Galaxy Tab A7 Lite 4552";
@@ -83,9 +87,22 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(WIEGAND_D1_PIN), handleWiegandD1, FALLING);
 
   connectWiFi();
+  // Membuat endpoint "/open" yang menerima HTTP POST
+  server.on("/open", HTTP_POST, []() {
+    Serial.println("Perintah OPEN diterima dari Next.js!");
+    openGate(); // Memicu optocoupler
+    
+    // Memberi jawaban balik ke Next.js agar tombol di web tidak loading terus
+    server.send(200, "application/json", "{\"status\":\"OK\", \"message\":\"Gate A Opened\"}");
+  });
+
+  // Jalankan server
+  server.begin();
+
 }
 
 void loop() {
+  server.handleClient();
   blinkStatusLedIfDue();
   readUidFromWiegand();
 

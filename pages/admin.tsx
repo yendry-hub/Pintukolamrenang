@@ -2,14 +2,20 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import StatusCard from '@/components/StatusCard'
+import CardManagement from '@/components/CardManagement'
 import { getFirebaseIdToken, logoutFirebase, onFirebaseAuthStateChanged } from '@/lib/firebase'
 import { cacheJson, clearOfflineSession, getCachedJson, getOfflineSession, setOfflineSession } from '@/lib/offlineClient'
-import type { GateStatus, ScanLog, TicketStats, TicketType } from '@/lib/types'
+import type { GateStatus, ScanLog, TicketStats, Transaction, PrintoutConfig } from '@/lib/types'
+import { generateReceipt } from '@/lib/receipt'
 
 type AdminDashboardResponse = {
   status: GateStatus
   stats: TicketStats
   recentScans: ScanLog[]
+  todaySummary?: {
+    transactionCount: number
+    revenue: number
+  }
 }
 
 const initialStats: TicketStats = {
@@ -19,8 +25,8 @@ const initialStats: TicketStats = {
   activeMembers: 0
 }
 
-const TICKET_TYPES: TicketType[] = ['Tiket Harian', 'Member', 'VIP', 'Paket Keluarga', 'Tiket Anak', 'Tiket Dewasa']
-const INITIAL_TICKET_PRICES: Record<TicketType, number> = {
+const DEFAULT_TICKET_TYPES: string[] = ['Tiket Harian', 'Member', 'VIP', 'Paket Keluarga', 'Tiket Anak', 'Tiket Dewasa']
+const INITIAL_TICKET_PRICES: Record<string, number> = {
   'Tiket Harian': 50000,
   Member: 100000,
   VIP: 75000,
@@ -43,14 +49,128 @@ export default function AdminPage() {
   const [createMessage, setCreateMessage] = useState<string | null>(null)
   const [createError, setCreateError] = useState<string | null>(null)
   const [authInitialized, setAuthInitialized] = useState(false)
-  const [view, setView] = useState<'dashboard' | 'kasir' | 'grafik' | 'riwayat' | 'harga' | 'laporan'>('dashboard')
-  const [ticketPrices, setTicketPrices] = useState<Record<TicketType, number>>(INITIAL_TICKET_PRICES)
+  const [view, setView] = useState<'dashboard' | 'kasir' | 'kartu' | 'grafik' | 'riwayat' | 'harga' | 'laporan' | 'transaksi' | 'printout'>('dashboard')
+  const [ticketPrices, setTicketPrices] = useState<Record<string, number>>(INITIAL_TICKET_PRICES)
   const [priceSaving, setPriceSaving] = useState(false)
   const [priceMessage, setPriceMessage] = useState<string | null>(null)
   const [reportFilter, setReportFilter] = useState<'today' | 'week' | 'month' | 'all'>('today')
   const [salesReport, setSalesReport] = useState<any>(null)
   const [reportLoading, setReportLoading] = useState(false)
   const [offlineMode, setOfflineMode] = useState(false)
+  const [ticketTypes, setTicketTypes] = useState<string[]>([])
+  const [paymentMethods, setPaymentMethods] = useState<string[]>(['Tunai', 'Kartu Debit', 'Kartu Kredit', 'E-Wallet'])
+  const [todaySummary, setTodaySummary] = useState<{ transactionCount: number; revenue: number }>({ transactionCount: 0, revenue: 0 })
+  const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [txFilter, setTxFilter] = useState<'today' | 'week' | 'month' | 'all'>('today')
+  const [txLoading, setTxLoading] = useState(false)
+  const [printReceipt, setPrintReceipt] = useState<string | null>(null)
+  const [printoutConfig, setPrintoutConfig] = useState<PrintoutConfig>({
+    placeName: 'KOLAM RENANG', address: '', phone: '', headerText: '', footerMessage1: 'Terima Kasih', footerMessage2: 'Selamat Bersenang-senang'
+  })
+  const [printoutSaving, setPrintoutSaving] = useState(false)
+  const [printoutMessage, setPrintoutMessage] = useState<string | null>(null)
+
+  const fetchPrintoutConfig = async () => {
+    try {
+      const token = await getFirebaseIdToken()
+      const res = await fetch('/api/printout-config', {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.config) setPrintoutConfig(data.config)
+      }
+    } catch {}
+  }
+
+  const savePrintoutConfig = async () => {
+    setPrintoutSaving(true)
+    setPrintoutMessage(null)
+    try {
+      const token = await getFirebaseIdToken()
+      const res = await fetch('/api/printout-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(printoutConfig)
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setPrintoutMessage('Konfigurasi tersimpan')
+        if (data.config) setPrintoutConfig(data.config)
+      } else {
+        setPrintoutMessage('Gagal: ' + (data.error || 'Unknown error'))
+      }
+    } catch {
+      setPrintoutMessage('Gagal terhubung ke server')
+    } finally {
+      setPrintoutSaving(false)
+    }
+    setTimeout(() => setPrintoutMessage(null), 3000)
+  }
+
+  const fetchTransactions = async (filter = txFilter) => {
+    setTxLoading(true)
+    try {
+      const token = await getFirebaseIdToken()
+      const res = await fetch(`/api/transactions?filter=${filter}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (res.status === 401) {
+        await logoutFirebase()
+        router.replace('/login')
+        return
+      }
+      const data = await res.json()
+      if (res.ok) {
+        setTransactions(data.transactions)
+      }
+    } catch {
+      setError('Gagal memuat transaksi')
+    } finally {
+      setTxLoading(false)
+    }
+  }
+
+  const handlePrintTransaction = async (tx: Transaction) => {
+    const date = new Date(tx.createdAt)
+    let printoutCfg = undefined
+    try {
+      const token = await getFirebaseIdToken()
+      const cfgRes = await fetch('/api/printout-config', {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (cfgRes.ok) {
+        const cfgData = await cfgRes.json()
+        printoutCfg = cfgData.config
+      }
+    } catch {}
+    const receipt = generateReceipt({
+      transactionId: tx.transactionId,
+      dateTime: date,
+      ticketType: tx.ticketType,
+      price: tx.price,
+      quantity: tx.quantity,
+      total: tx.total,
+      cardUid: tx.uid,
+      cashierName: tx.cashier,
+      paymentMethod: tx.paymentMethod
+    }, printoutCfg)
+    const printWindow = window.open('', '', 'width=400,height=600')
+    if (!printWindow) return
+    printWindow.document.write(`
+      <html><head><title>Struk ${tx.transactionId}</title>
+      <style>
+        @page { size: 58mm auto; margin: 0; }
+        * { box-sizing: border-box; }
+        html,body { font-family:'Courier New',monospace; margin:0; padding:0; width:58mm; background:#fff; }
+        body { padding:2mm; color:#000; font-size:10px; line-height:1.25; }
+        pre { margin:0; width:54mm; white-space:pre-wrap; word-break:break-word; }
+      </style></head><body><pre>${receipt.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] || c))}</pre></body></html>
+    `)
+    printWindow.document.close()
+    printWindow.focus()
+    printWindow.print()
+  }
 
   useEffect(() => {
     const unsubscribe = onFirebaseAuthStateChanged((user) => {
@@ -71,7 +191,7 @@ export default function AdminPage() {
       setUserEmail(user.email || null)
       setOfflineSession(user.email || 'admin', 'admin', false)
       fetchDashboard()
-      fetchPrices()
+      fetchConfig()
     })
 
     return unsubscribe
@@ -81,7 +201,7 @@ export default function AdminPage() {
     const handleOnline = () => {
       setOfflineMode(false)
       fetchDashboard()
-      fetchPrices()
+      fetchConfig()
     }
     const handleOffline = () => setOfflineMode(true)
 
@@ -97,7 +217,7 @@ export default function AdminPage() {
 
   const loadCachedAdminData = () => {
     const cachedDashboard = getCachedJson<AdminDashboardResponse>('adminDashboard')
-    const cachedPrices = getCachedJson<Record<TicketType, number>>('ticketPrices')
+    const cachedPrices = getCachedJson<Record<string, number>>('ticketPrices')
 
     if (cachedDashboard) {
       setStatus(cachedDashboard.status)
@@ -112,6 +232,35 @@ export default function AdminPage() {
     setError('Mode offline aktif. Data dashboard memakai cache terakhir.')
   }
 
+  const fetchConfig = async () => {
+    try {
+      const res = await fetch('/api/get-ticket-config')
+      if (res.ok) {
+        const data = await res.json()
+        if (data.ticketTypes && data.ticketTypes.length > 0) {
+          setTicketTypes(data.ticketTypes)
+          cacheJson('ticketTypes', data.ticketTypes)
+        }
+        if (data.paymentMethods && data.paymentMethods.length > 0) {
+          setPaymentMethods(data.paymentMethods)
+          cacheJson('paymentMethods', data.paymentMethods)
+        }
+        if (data.prices) {
+          setTicketPrices(data.prices)
+          cacheJson('ticketPrices', data.prices)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch config:', err)
+      const cachedTypes = getCachedJson<string[]>('ticketTypes')
+      if (cachedTypes) setTicketTypes(cachedTypes)
+      const cachedMethods = getCachedJson<string[]>('paymentMethods')
+      if (cachedMethods) setPaymentMethods(cachedMethods)
+      const cachedPrices = getCachedJson<Record<string, number>>('ticketPrices')
+      if (cachedPrices) setTicketPrices(cachedPrices)
+    }
+  }
+
   const fetchPrices = async () => {
     try {
       const res = await fetch('/api/get-prices')
@@ -123,7 +272,7 @@ export default function AdminPage() {
       }
     } catch (err) {
       console.error('Failed to fetch prices in admin:', err)
-      const cachedPrices = getCachedJson<Record<TicketType, number>>('ticketPrices')
+    const cachedPrices = getCachedJson<Record<string, number>>('ticketPrices')
       if (cachedPrices) {
         setTicketPrices(cachedPrices)
       }
@@ -163,6 +312,7 @@ export default function AdminPage() {
       setStatus(payload.status)
       setStats(payload.stats)
       setRecentScans(payload.recentScans)
+      if (payload.todaySummary) setTodaySummary(payload.todaySummary)
       cacheJson('adminDashboard', payload)
     } catch (err: any) {
       const cachedDashboard = getCachedJson<AdminDashboardResponse>('adminDashboard')
@@ -203,10 +353,16 @@ export default function AdminPage() {
     }
   }
 
-  // Tambahkan useEffect untuk fetch report saat view berubah ke 'laporan' atau filter berubah
+  // Auto-refresh saat view berubah
   useEffect(() => {
     if (view === 'laporan') {
       fetchSalesReport()
+    } else if (view === 'riwayat') {
+      fetchDashboard()
+    } else if (view === 'transaksi') {
+      fetchTransactions()
+    } else if (view === 'printout') {
+      fetchPrintoutConfig()
     }
   }, [view, reportFilter])
 
@@ -280,8 +436,8 @@ export default function AdminPage() {
             <p className="mt-2 text-sm text-slate-500">{offlineMode ? 'Mode offline aktif' : 'Online'}</p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <button onClick={fetchPrices} className="rounded-2xl bg-sky-100 px-4 py-2 text-sky-700 shadow-soft hover:bg-sky-200" title="Refresh harga dari server">
-              Refresh Harga
+            <button onClick={fetchConfig} className="rounded-2xl bg-sky-100 px-4 py-2 text-sky-700 shadow-soft hover:bg-sky-200" title="Refresh data dari server">
+              Refresh Data
             </button>
             <button onClick={handleLogout} className="rounded-2xl bg-white px-4 py-2 text-slate-700 shadow-soft hover:bg-slate-50">
               Logout
@@ -310,10 +466,22 @@ export default function AdminPage() {
                   Tambah Kasir
                 </button>
                 <button
+                  onClick={() => setView('kartu')}
+                  className={`w-full text-left rounded-xl px-4 py-2 hover:bg-slate-50 ${view === 'kartu' ? 'bg-slate-100 font-semibold' : ''}`}
+                >
+                  Management Kartu
+                </button>
+                <button
                   onClick={() => setView('grafik')}
                   className={`w-full text-left rounded-xl px-4 py-2 hover:bg-slate-50 ${view === 'grafik' ? 'bg-slate-100 font-semibold' : ''}`}
                 >
                   Grafik Tren
+                </button>
+                <button
+                  onClick={() => setView('transaksi')}
+                  className={`w-full text-left rounded-xl px-4 py-2 hover:bg-slate-50 ${view === 'transaksi' ? 'bg-slate-100 font-semibold' : ''}`}
+                >
+                  Riwayat Transaksi
                 </button>
                 <button
                   onClick={() => setView('riwayat')}
@@ -326,6 +494,12 @@ export default function AdminPage() {
                   className={`w-full text-left rounded-xl px-4 py-2 hover:bg-slate-50 ${view === 'harga' ? 'bg-slate-100 font-semibold' : ''}`}
                 >
                   Pengaturan Harga
+                </button>
+                <button
+                  onClick={() => setView('printout')}
+                  className={`w-full text-left rounded-xl px-4 py-2 hover:bg-slate-50 ${view === 'printout' ? 'bg-slate-100 font-semibold' : ''}`}
+                >
+                  Custom Print Out
                 </button>
                 <button
                   onClick={() => setView('laporan')}
@@ -358,12 +532,22 @@ export default function AdminPage() {
                 <div className="mt-6 grid gap-6 xl:grid-cols-3">
                   <div className="rounded-3xl bg-white p-6 shadow-soft">
                     <h2 className="text-lg font-semibold">Ringkasan</h2>
-                    <div className="mt-6 space-y-4 text-sm text-slate-600">
-                      <div className="flex items-center justify-between rounded-2xl bg-slate-50 p-4">
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 mb-6">
+                      <div className="rounded-2xl bg-sky-50 border border-sky-100 p-3">
+                        <p className="text-xs text-sky-600 uppercase font-bold tracking-wider">Transaksi Hari Ini</p>
+                        <p className="text-xl font-bold text-sky-900">{todaySummary.transactionCount}</p>
+                      </div>
+                      <div className="rounded-2xl bg-emerald-50 border border-emerald-100 p-3">
+                        <p className="text-xs text-emerald-600 uppercase font-bold tracking-wider">Pendapatan Hari Ini</p>
+                        <p className="text-xl font-bold text-emerald-900">Rp {todaySummary.revenue.toLocaleString('id-ID')}</p>
+                      </div>
+                    </div>
+                    <div className="space-y-3 text-sm text-slate-600">
+                      <div className="flex items-center justify-between rounded-2xl bg-slate-50 p-3">
                         <span>Total Scan</span>
                         <strong>{recentScans.length}</strong>
                       </div>
-                      <div className="flex items-center justify-between rounded-2xl bg-slate-50 p-4">
+                      <div className="flex items-center justify-between rounded-2xl bg-slate-50 p-3">
                         <span>Anggota Aktif</span>
                         <strong>{stats.activeMembers}</strong>
                       </div>
@@ -388,7 +572,7 @@ export default function AdminPage() {
                           <div key={scan.uid + scan.scannedAt} className="rounded-3xl border border-slate-200 p-4">
                             <div className="flex flex-wrap items-center justify-between gap-3">
                               <span className="font-semibold">{scan.ticketType}</span>
-                              <span className="text-sm text-slate-500">{scan.scannedAt}</span>
+                              <span className="text-sm text-slate-500">{scan.scannedDate ? `${scan.scannedDate} ` : ''}{scan.scannedAt}</span>
                             </div>
                             <div className="mt-2 flex flex-wrap gap-3 text-sm text-slate-600">
                               <span>UID: {scan.uid}</span>
@@ -489,6 +673,8 @@ export default function AdminPage() {
               </div>
             )}
 
+            {view === 'kartu' && <CardManagement ticketTypes={ticketTypes} />}
+
             {view === 'grafik' && (
               <div className="rounded-3xl bg-white p-6 shadow-soft">
                 <div className="mb-5 flex items-center justify-between">
@@ -505,40 +691,50 @@ export default function AdminPage() {
                   </button>
                 </div>
 
-                <div className="space-y-6">
+                <div className="grid gap-8 md:grid-cols-2">
                   <div>
-                    <p className="mb-3 text-sm font-medium text-slate-600">Hourly Trend</p>
-                    <div className="flex items-end gap-2 h-48">
-                      {stats.hourlyTrend.map((value, index) => (
-                        <div key={index} className="flex-1">
-                          <div className="relative h-full rounded-3xl bg-slate-100">
-                            <div
-                              className="absolute bottom-0 left-0 right-0 rounded-3xl bg-sky-600"
-                              style={{ height: `${(value / chartMaxValue) * 100}%` }}
-                            />
+                    <p className="mb-4 text-sm font-semibold text-slate-600 uppercase tracking-wider">Hourly Trend</p>
+                    <div className="space-y-3">
+                      {stats.hourlyTrend.map((value, index) => {
+                        const label = index === 6 ? 'Now' : `${6 - index}h`
+                        const barWidth = chartMaxValue > 0 ? (value / chartMaxValue) * 100 : 0
+                        return (
+                          <div key={index} className="flex items-center gap-3">
+                            <span className="w-8 text-right text-xs font-medium text-slate-500 shrink-0">{label}</span>
+                            <div className="flex-1 h-7 rounded-xl bg-slate-100 overflow-hidden">
+                              <div
+                                className="h-full rounded-xl bg-gradient-to-r from-sky-500 to-sky-400 transition-all duration-500 flex items-center justify-end px-2"
+                                style={{ width: `${Math.max(barWidth, value > 0 ? 8 : 0)}%` }}
+                              >
+                                {value > 0 && <span className="text-[10px] font-bold text-white drop-shadow-sm">{value}</span>}
+                              </div>
+                            </div>
                           </div>
-                          <div className="mt-2 text-center text-xs text-slate-500">
-                            {index === 6 ? 'Now' : `${6 - index}h`}
-                          </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
 
                   <div>
-                    <p className="mb-3 text-sm font-medium text-slate-600">Daily Trend</p>
-                    <div className="flex items-end gap-2 h-48">
-                      {stats.dailyTrend.map((value, index) => (
-                        <div key={index} className="flex-1">
-                          <div className="relative h-full rounded-3xl bg-slate-100">
-                            <div
-                              className="absolute bottom-0 left-0 right-0 rounded-3xl bg-sky-500"
-                              style={{ height: `${(value / chartMaxValue) * 100}%` }}
-                            />
+                    <p className="mb-4 text-sm font-semibold text-slate-600 uppercase tracking-wider">Daily Trend</p>
+                    <div className="space-y-3">
+                      {stats.dailyTrend.map((value, index) => {
+                        const label = `${4 - index}d`
+                        const barWidth = chartMaxValue > 0 ? (value / chartMaxValue) * 100 : 0
+                        return (
+                          <div key={index} className="flex items-center gap-3">
+                            <span className="w-8 text-right text-xs font-medium text-slate-500 shrink-0">{label}</span>
+                            <div className="flex-1 h-7 rounded-xl bg-slate-100 overflow-hidden">
+                              <div
+                                className="h-full rounded-xl bg-gradient-to-r from-indigo-500 to-indigo-400 transition-all duration-500 flex items-center justify-end px-2"
+                                style={{ width: `${Math.max(barWidth, value > 0 ? 8 : 0)}%` }}
+                              >
+                                {value > 0 && <span className="text-[10px] font-bold text-white drop-shadow-sm">{value}</span>}
+                              </div>
+                            </div>
                           </div>
-                          <div className="mt-2 text-center text-xs text-slate-500">{`${4 - index}d`}</div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
                 </div>
@@ -552,6 +748,13 @@ export default function AdminPage() {
                     <h2 className="text-lg font-semibold">Riwayat Scan Kartu</h2>
                     <p className="text-sm text-slate-500">Data langsung dari Firestore</p>
                   </div>
+                  <button
+                    onClick={fetchDashboard}
+                    disabled={loading}
+                    className="rounded-2xl bg-sky-600 px-4 py-2 text-sm text-white hover:bg-sky-700 disabled:opacity-50"
+                  >
+                    {loading ? 'Memuat...' : 'Refresh'}
+                  </button>
                 </div>
 
                 {loading ? (
@@ -564,7 +767,7 @@ export default function AdminPage() {
                       <div key={scan.uid + scan.scannedAt} className="rounded-3xl border border-slate-200 p-4">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <span className="font-semibold">{scan.ticketType}</span>
-                          <span className="text-sm text-slate-500">{scan.scannedAt}</span>
+                          <span className="text-sm text-slate-500">{scan.scannedDate ? `${scan.scannedDate} ` : ''}{scan.scannedAt}</span>
                         </div>
                         <div className="mt-2 flex flex-wrap gap-3 text-sm text-slate-600">
                           <span>UID: {scan.uid}</span>
@@ -582,7 +785,7 @@ export default function AdminPage() {
               <div className="rounded-3xl bg-white p-6 shadow-soft max-w-2xl">
                 <h2 className="text-lg font-semibold mb-6">Pengaturan Harga Tiket</h2>
                 <div className="space-y-4">
-                  {TICKET_TYPES.map((ticketType) => (
+                  {(ticketTypes.length ? ticketTypes : DEFAULT_TICKET_TYPES).map((ticketType) => (
                     <div key={ticketType} className="flex items-center gap-4">
                       <label className="flex-1 text-sm font-medium text-slate-700 min-w-48">{ticketType}</label>
                       <div className="flex items-center gap-2 flex-1">
@@ -615,7 +818,7 @@ export default function AdminPage() {
                     {priceSaving ? 'Menyimpan...' : 'Simpan Pengaturan Harga'}
                   </button>
                   <button
-                    onClick={fetchPrices}
+                    onClick={fetchConfig}
                     className="rounded-2xl bg-slate-200 px-4 py-3 text-slate-700 hover:bg-slate-300"
                     title="Muat ulang harga dari database"
                   >
@@ -697,6 +900,182 @@ export default function AdminPage() {
                     <div className="py-12 text-center text-slate-500">Gagal memuat data. Silakan refresh.</div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {view === 'printout' && (
+              <div className="rounded-3xl bg-white p-6 shadow-soft max-w-2xl">
+                <div className="mb-6 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold">Custom Print Out</h2>
+                    <p className="text-sm text-slate-500">Sesuaikan tampilan struk thermal</p>
+                  </div>
+                  <button
+                    onClick={savePrintoutConfig}
+                    disabled={printoutSaving}
+                    className="rounded-2xl bg-sky-600 px-4 py-2 text-white hover:bg-sky-700 disabled:opacity-50"
+                  >
+                    {printoutSaving ? 'Menyimpan...' : 'Simpan'}
+                  </button>
+                </div>
+
+                {printoutMessage && (
+                  <div className={`mb-4 rounded-2xl p-3 text-sm ${printoutMessage.includes('Gagal') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+                    {printoutMessage}
+                  </div>
+                )}
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-600 mb-1">Nama Tempat</label>
+                    <input
+                      type="text"
+                      value={printoutConfig.placeName}
+                      onChange={(e) => setPrintoutConfig({ ...printoutConfig, placeName: e.target.value })}
+                      className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-600 mb-1">Alamat</label>
+                    <textarea
+                      rows={2}
+                      value={printoutConfig.address}
+                      onChange={(e) => setPrintoutConfig({ ...printoutConfig, address: e.target.value })}
+                      className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-600 mb-1">Telepon</label>
+                    <input
+                      type="text"
+                      value={printoutConfig.phone}
+                      onChange={(e) => setPrintoutConfig({ ...printoutConfig, phone: e.target.value })}
+                      className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-600 mb-1">Teks Header (tambahan)</label>
+                    <input
+                      type="text"
+                      value={printoutConfig.headerText}
+                      onChange={(e) => setPrintoutConfig({ ...printoutConfig, headerText: e.target.value })}
+                      className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                      placeholder="Contoh: Jam Operasional 08:00 - 17:00"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-600 mb-1">Footer Baris 1</label>
+                    <input
+                      type="text"
+                      value={printoutConfig.footerMessage1}
+                      onChange={(e) => setPrintoutConfig({ ...printoutConfig, footerMessage1: e.target.value })}
+                      className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-600 mb-1">Footer Baris 2</label>
+                    <input
+                      type="text"
+                      value={printoutConfig.footerMessage2}
+                      onChange={(e) => setPrintoutConfig({ ...printoutConfig, footerMessage2: e.target.value })}
+                      className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-8 rounded-2xl bg-slate-50 p-4">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Pratinjau Header Struk</p>
+                  <pre className="font-mono text-xs text-slate-800 bg-white rounded-xl p-3 border border-slate-100 whitespace-pre-wrap">
+                    {[printoutConfig.placeName, printoutConfig.address, printoutConfig.phone ? `Telp: ${printoutConfig.phone}` : '', ...(printoutConfig.headerText ? ['', printoutConfig.headerText] : [])].filter(Boolean).join('\n')}
+                  </pre>
+                </div>
+              </div>
+            )}
+
+            {view === 'transaksi' && (
+              <div className="rounded-3xl bg-white p-6 shadow-soft">
+                <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold">Riwayat Transaksi</h2>
+                    <p className="text-sm text-slate-500">Daftar transaksi pembayaran tiket</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex bg-slate-100 p-1 rounded-2xl">
+                      {(['today', 'week', 'month', 'all'] as const).map((f) => (
+                        <button
+                          key={f}
+                          onClick={() => { setTxFilter(f); fetchTransactions(f) }}
+                          className={`px-3 py-1.5 text-sm rounded-xl transition-all ${
+                            txFilter === f ? 'bg-white shadow-sm font-medium' : 'text-slate-500 hover:text-slate-700'
+                          }`}
+                        >
+                          {f === 'today' ? 'Hari Ini' : f === 'week' ? 'Minggu' : f === 'month' ? 'Bulan' : 'Semua'}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => fetchTransactions()}
+                      className="rounded-2xl bg-sky-600 px-4 py-2 text-sm text-white hover:bg-sky-700"
+                    >
+                      {txLoading ? 'Memuat...' : 'Refresh'}
+                    </button>
+                  </div>
+                </div>
+
+                {txLoading ? (
+                  <div className="py-12 text-center text-slate-500">Memuat transaksi...</div>
+                ) : transactions.length === 0 ? (
+                  <div className="py-12 text-center text-slate-400 italic">Tidak ada transaksi pada periode ini</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="border-b border-slate-100 text-sm text-slate-500">
+                          <th className="pb-3 font-medium">Waktu</th>
+                          <th className="pb-3 font-medium">ID Transaksi</th>
+                          <th className="pb-3 font-medium">Tiket</th>
+                          <th className="pb-3 font-medium">Qty</th>
+                          <th className="pb-3 font-medium text-right">Total</th>
+                          <th className="pb-3 font-medium">Kasir</th>
+                          <th className="pb-3 font-medium">Status</th>
+                          <th className="pb-3 font-medium"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {transactions.map((tx) => (
+                          <tr key={tx.transactionId} className="text-sm hover:bg-slate-50">
+                            <td className="py-3 whitespace-nowrap text-slate-500">
+                              {new Date(tx.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            </td>
+                            <td className="py-3 font-mono text-xs max-w-[120px] truncate">{tx.transactionId}</td>
+                            <td className="py-3">{tx.ticketType}</td>
+                            <td className="py-3">{tx.quantity}</td>
+                            <td className="py-3 text-right font-semibold">Rp {tx.total.toLocaleString('id-ID')}</td>
+                            <td className="py-3 text-slate-600">{tx.cashier}</td>
+                            <td className="py-3">
+                              <span className="inline-block rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700">
+                                {tx.paymentStatus}
+                              </span>
+                            </td>
+                            <td className="py-3">
+                              <button
+                                onClick={() => handlePrintTransaction(tx)}
+                                className="rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-sky-100 hover:text-sky-700 transition-colors"
+                              >
+                                Cetak
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
           </section>

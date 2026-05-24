@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import initFirebaseAdmin from '@/lib/firebaseAdmin'
+import { getTodayStartJakarta, getTodayEndJakarta } from '@/lib/dateUtils'
 
 const admin = initFirebaseAdmin()
 
@@ -41,26 +42,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     // Get filter parameters
     const filterType = req.query.filter || 'today' // today, week, month, all
-    
-    const now = new Date()
-    let startDate = new Date()
 
-    // Calculate start date based on filter
+    // Convert now to Jakarta timezone for date calculations
+    const nowInJakarta = new Date(Date.now() + 7 * 60 * 60 * 1000)
+    let startDate: Date
+
+    // Calculate start date based on filter (WIB timezone)
     switch (filterType) {
       case 'today':
-        startDate.setHours(0, 0, 0, 0)
+        startDate = getTodayStartJakarta()
         break
-      case 'week':
-        startDate.setDate(now.getDate() - 7)
-        startDate.setHours(0, 0, 0, 0)
+      case 'week': {
+        const weekAgoJakarta = new Date(nowInJakarta.getTime() - 7 * 86400000)
+        startDate = new Date((weekAgoJakarta.getTime() - 7 * 60 * 60 * 1000))
         break
-      case 'month':
-        startDate.setDate(1)
-        startDate.setHours(0, 0, 0, 0)
+      }
+      case 'month': {
+        const monthStart = new Date(Date.UTC(nowInJakarta.getUTCFullYear(), nowInJakarta.getUTCMonth(), 1))
+        startDate = new Date(monthStart.getTime() - 7 * 60 * 60 * 1000)
         break
+      }
       case 'all':
         startDate = new Date('2000-01-01')
         break
+      default:
+        startDate = getTodayStartJakarta()
     }
 
     // Query transactions from Firestore
