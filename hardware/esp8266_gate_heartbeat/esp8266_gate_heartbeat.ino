@@ -72,6 +72,9 @@ String lastUid = "";
 unsigned long lastScanMillis = 0;
 const unsigned long SCAN_COOLDOWN_MS = 5000;
 
+// Ack untuk command OPEN — server hapus command hanya setelah ESP konfirmasi
+bool pendingAck = false;
+
 // Wiegand umumnya selesai mengirim setelah tidak ada pulsa selama 25-50 ms.
 volatile unsigned long wiegandData = 0;
 volatile int wiegandBitCount = 0;
@@ -299,7 +302,8 @@ void sendHeartbeat() {
   payload += "\"name\":\"" + String(GATE_NAME) + "\",";
   payload += "\"secret\":\"" + String(GATE_SECRET) + "\",";
   payload += "\"ipAddress\":\"" + WiFi.localIP().toString() + "\",";
-  payload += "\"firmwareVersion\":\"" + String(FIRMWARE_VERSION) + "\"";
+  payload += "\"firmwareVersion\":\"" + String(FIRMWARE_VERSION) + "\",";
+  payload += "\"commandExecuted\":" + String(pendingAck ? "true" : "false");
   payload += "}";
 
   int httpCode = http.POST(payload);
@@ -308,8 +312,14 @@ void sendHeartbeat() {
     if (body.indexOf("\"command\":\"OPEN\"") >= 0) {
       Log.println("HEARTBEAT + OPEN COMMAND");
       openGate();
+      pendingAck = true;
     } else {
-      Log.println("HEARTBEAT OK");
+      if (pendingAck) {
+        Log.println("HEARTBEAT ACK OK");
+        pendingAck = false;
+      } else {
+        Log.println("HEARTBEAT OK");
+      }
     }
   } else {
     Log.print("HEARTBEAT SENT (No wait): ");

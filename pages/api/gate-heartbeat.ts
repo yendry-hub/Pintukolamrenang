@@ -15,7 +15,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  const { gateId, secret, ipAddress, firmwareVersion, name, errors } = req.body || {}
+  const { gateId, secret, ipAddress, firmwareVersion, name, errors, commandExecuted } = req.body || {}
 
   if (secret !== process.env.ESP_GATE_SECRET) {
     return res.status(401).json({ error: 'Unauthorized' })
@@ -43,19 +43,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true })
 
-    // Cek perintah pending (OPEN) untuk gate ini
-    const cmdSnap = await db.collection('gateCommands').doc(id).get()
-    let command: string | null = null
-    if (cmdSnap.exists) {
-      command = cmdSnap.data()?.command || null
-      batch.delete(cmdSnap.ref)
+    // Hapus command hanya jika ESP sudah konfirmasi
+    if (commandExecuted === true) {
+      batch.delete(db.collection('gateCommands').doc(id))
     }
 
     await batch.commit()
 
+    // Baca perintah baru (kalau belum terhapus oleh ack di atas)
     const body: Record<string, any> = { result: 'OK', gateId: id }
-    if (command) {
-      body.command = command
+    const cmdSnap = await db.collection('gateCommands').doc(id).get()
+    if (cmdSnap.exists) {
+      body.command = cmdSnap.data()?.command || null
     }
     return res.status(200).json(body)
   } catch (error: any) {
