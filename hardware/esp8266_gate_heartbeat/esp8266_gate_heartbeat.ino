@@ -42,8 +42,8 @@ const char* HEARTBEAT_ENDPOINT = "https://pintukolamrenang.vercel.app/api/gate-h
 const char* GATE_SECRET = "meristarayakolamrenang";
 
 // Identitas gate. Untuk gate lain, ubah menjadi Gate-B, Gate-C, dst.
-const char* GATE_ID = "Gate-A";
-const char* GATE_NAME = "Gate A - Main Entrance";
+const char* GATE_ID = "Gate-B";
+const char* GATE_NAME = "Gate B - Main Entrance";
 const char* FIRMWARE_VERSION = "1.0.0";
 
 // Wiring ESP8266 NodeMCU:
@@ -80,7 +80,7 @@ const unsigned long WIEGAND_FRAME_GAP_MS = 35;
 
 // Heartbeat dikirim berkala agar aplikasi tahu gate masih online.
 unsigned long lastHeartbeatMillis = 0;
-const unsigned long HEARTBEAT_INTERVAL_MS = 15000;
+const unsigned long HEARTBEAT_INTERVAL_MS = 3000;
 unsigned long lastStatusLedMillis = 0;
 
 void ICACHE_RAM_ATTR handleWiegandD0() {
@@ -304,7 +304,13 @@ void sendHeartbeat() {
 
   int httpCode = http.POST(payload);
   if (httpCode == HTTP_CODE_OK) {
-    Log.println("HEARTBEAT OK");
+    String body = http.getString();
+    if (body.indexOf("\"command\":\"OPEN\"") >= 0) {
+      Log.println("HEARTBEAT + OPEN COMMAND");
+      openGate();
+    } else {
+      Log.println("HEARTBEAT OK");
+    }
   } else {
     Log.print("HEARTBEAT SENT (No wait): ");
     Log.println(httpCode);

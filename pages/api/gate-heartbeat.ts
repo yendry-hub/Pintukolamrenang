@@ -30,21 +30,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const id = String(gateId)
     const remoteAddress = req.headers['x-forwarded-for'] || req.socket.remoteAddress || null
 
-    await db.collection('gateDevices').doc(id).set(
-      {
-        gateId: id,
-        name: name ? String(name) : id,
-        status: 'ONLINE',
-        lastSeen: admin.firestore.FieldValue.serverTimestamp(),
-        ipAddress: ipAddress ? String(ipAddress) : String(remoteAddress || ''),
-        firmwareVersion: firmwareVersion ? String(firmwareVersion) : '',
-        errors: normalizeErrors(errors),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      },
-      { merge: true }
-    )
+    const batch = db.batch()
 
-    return res.status(200).json({ result: 'OK', gateId: id })
+    batch.set(db.collection('gateDevices').doc(id), {
+      gateId: id,
+      name: name ? String(name) : id,
+      status: 'ONLINE',
+      lastSeen: admin.firestore.FieldValue.serverTimestamp(),
+      ipAddress: ipAddress ? String(ipAddress) : String(remoteAddress || ''),
+      firmwareVersion: firmwareVersion ? String(firmwareVersion) : '',
+      errors: normalizeErrors(errors),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true })
+
+    // Cek perintah pending (OPEN) untuk gate ini
+    const cmdSnap = await db.collection('gateCommands').doc(id).get()
+    let command: string | null = null
+    if (cmdSnap.exists) {
+      command = cmdSnap.data()?.command || null
+      batch.delete(cmdSnap.ref)
+    }
+
+    await batch.commit()
+
+    const body: Record<string, any> = { result: 'OK', gateId: id }
+    if (command) {
+      body.command = command
+    }
+    return res.status(200).json(body)
   } catch (error: any) {
     console.error('/api/gate-heartbeat error:', error)
     return res.status(500).json({ error: error?.message || 'Failed to update gate heartbeat' })
