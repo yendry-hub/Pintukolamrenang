@@ -15,7 +15,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  const { gateId, secret, ipAddress, firmwareVersion, name, errors, commandExecuted } = req.body || {}
+  const { gateId, secret, ipAddress, firmwareVersion, name, errors, commandExecuted, scanAck } = req.body || {}
 
   if (secret !== process.env.ESP_GATE_SECRET) {
     return res.status(401).json({ error: 'Unauthorized' })
@@ -49,6 +49,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     await batch.commit()
+
+    // Pindahkan pendingScan ke scanLogs jika ESP konfirmasi
+    if (scanAck) {
+      const scanUid = String(scanAck)
+      const pendingRef = db.collection('pendingScans').doc(scanUid)
+      const pendingSnap = await pendingRef.get()
+      if (pendingSnap.exists) {
+        const data = pendingSnap.data() || {}
+        await db.collection('scanLogs').add({
+          uid: scanUid,
+          gateId: id,
+          status: 'VALID',
+          ticketType: data.ticketType ?? 'Unknown',
+          scannedAt: data.scannedAt || admin.firestore.FieldValue.serverTimestamp(),
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
+        })
+        await pendingRef.delete()
+      }
+    }
 
     // Baca perintah baru (kalau belum terhapus oleh ack di atas)
     const body: Record<string, any> = { result: 'OK', gateId: id }

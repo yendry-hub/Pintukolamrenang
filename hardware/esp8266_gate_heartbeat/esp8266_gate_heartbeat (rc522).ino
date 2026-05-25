@@ -83,6 +83,10 @@ const unsigned long SCAN_COOLDOWN_MS = 5000;
 // Ack untuk command OPEN — server hapus command hanya setelah ESP konfirmasi
 bool pendingAck = false;
 
+// Ack untuk scan kartu — scan log ditulis hanya setelah ESP konfirmasi gate terbuka
+String lastScannedUid = "";
+bool pendingScanAck = false;
+
 // Heartbeat dikirim berkala agar aplikasi tahu gate masih online.
 unsigned long lastHeartbeatMillis = 0;
 const unsigned long HEARTBEAT_INTERVAL_MS = 1000;
@@ -305,8 +309,10 @@ void sendHeartbeat() {
   payload += "\"secret\":\"" + String(GATE_SECRET) + "\",";
   payload += "\"ipAddress\":\"" + WiFi.localIP().toString() + "\",";
   payload += "\"firmwareVersion\":\"" + String(FIRMWARE_VERSION) + "\",";
-  payload += "\"commandExecuted\":" + String(pendingAck ? "true" : "false");
+  payload += "\"commandExecuted\":" + String(pendingAck ? "true" : "false") + ",";
+  payload += "\"scanAck\":\"" + String(pendingScanAck ? lastScannedUid : "") + "\"";
   payload += "}";
+  if (pendingScanAck) pendingScanAck = false;
 
   int httpCode = http.POST(payload);
   if (httpCode == HTTP_CODE_OK) {
@@ -367,6 +373,8 @@ void sendUid(const String& uid) {
 
   if (httpCode == HTTP_CODE_OK && response.indexOf("OPEN") >= 0) {
     openGate();
+    lastScannedUid = uid;
+    pendingScanAck = true;
   } else if (httpCode <= 0 || requestTimedOut) {
     Log.println("NO OPEN CONFIRM WITHIN 2 SECONDS. FAIL-OPEN RELAY.");
     openGate();
