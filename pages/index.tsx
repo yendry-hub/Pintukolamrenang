@@ -18,6 +18,32 @@ export default function Home() {
     setGateLoading(gateId)
     setGateFeedback(null)
     setUnregGate(null)
+
+    // Coba kirim langsung ke ESP (lebih cepat, tanpa Vercel)
+    const gateInfo = status.gates?.find((g) => g.gateId === gateId)
+    const ip = gateInfo?.ipAddress
+    if (ip) {
+      try {
+        const ctrl = new AbortController()
+        setTimeout(() => ctrl.abort(), 3000)
+        const direct = await fetch(`http://${ip}/open`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command: 'OPEN', gateId }),
+          signal: ctrl.signal
+        })
+        if (direct.ok) {
+          setGateFeedback({ gateId, ok: true, msg: 'Gate opened!' })
+          setGateLoading(null)
+          setTimeout(() => setGateFeedback(null), 3000)
+          return
+        }
+      } catch {
+        // Gagal direct — lanjut fallback ke Vercel
+      }
+    }
+
+    // Fallback: lewat Vercel → Firestore → ESP (heartbeat polling 1 detik)
     try {
       const res = await fetch('/api/open-gate', {
         method: 'POST',
@@ -26,7 +52,7 @@ export default function Home() {
       })
       const data = await res.json()
       if (data?.result === 'OPEN') {
-        setGateFeedback({ gateId, ok: true, msg: 'Gate opened!' })
+        setGateFeedback({ gateId, ok: true, msg: 'Perintah terkirim' })
       } else if (data?.reason?.includes('not registered')) {
         setUnregGate(gateId)
       } else {

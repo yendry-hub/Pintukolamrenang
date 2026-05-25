@@ -139,9 +139,16 @@ void setup() {
     server.send(200, "text/html; charset=utf-8", html);
   });
 
-  // Endpoint "/open" — buka gate via HTTP POST
+  // Endpoint "/open" — buka gate via HTTP POST (dari browser langsung atau Vercel)
+  server.on("/open", HTTP_OPTIONS, []() {
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.sendHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
+    server.send(204);
+  });
   server.on("/open", HTTP_POST, []() {
-    Log.println("Perintah OPEN diterima dari Next.js!");
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    Log.println("Perintah OPEN diterima!");
     openGate();
     server.send(200, "application/json", "{\"status\":\"OK\", \"message\":\"Gate " + String(GATE_ID) + " Opened\"}");
   });
