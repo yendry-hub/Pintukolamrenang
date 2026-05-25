@@ -7,16 +7,17 @@ const GATE_SECRET = process.env.NEXT_PUBLIC_ESP_GATE_SECRET || ''
 
 export default function Home() {
   const [status, setStatus] = useState<GateStatus>({ online: true, lastSeen: null, currentGate: 'Gate-A' })
-  const [scanQueue, setScanQueue] = useState<number>(0)
   const [recent, setRecent] = useState<ScanLog[]>([])
   const [firebaseConnected, setFirebaseConnected] = useState<boolean | null>(null)
   const [firebaseMsg, setFirebaseMsg] = useState<string | null>(null)
   const [gateLoading, setGateLoading] = useState<string | null>(null)
   const [gateFeedback, setGateFeedback] = useState<{ gateId: string; ok: boolean; msg: string } | null>(null)
+  const [unregGate, setUnregGate] = useState<string | null>(null)
 
   const handleOpenGate = async (gateId: string) => {
     setGateLoading(gateId)
     setGateFeedback(null)
+    setUnregGate(null)
     try {
       const res = await fetch('/api/open-gate', {
         method: 'POST',
@@ -26,6 +27,8 @@ export default function Home() {
       const data = await res.json()
       if (data?.result === 'OPEN') {
         setGateFeedback({ gateId, ok: true, msg: 'Gate opened!' })
+      } else if (data?.reason?.includes('not registered')) {
+        setUnregGate(gateId)
       } else {
         setGateFeedback({ gateId, ok: false, msg: data?.reason || data?.error || 'Gagal' })
       }
@@ -37,6 +40,22 @@ export default function Home() {
     setTimeout(() => setGateFeedback(null), 3000)
   }
 
+  const fetchRecentScans = () => {
+    fetch('/api/recent-scans')
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data.scans)) setRecent(data.scans)
+        if (data.status) setStatus(data.status)
+      })
+      .catch(() => {})
+  }
+
+  useEffect(() => {
+    fetchRecentScans()
+    const interval = setInterval(fetchRecentScans, 10000)
+    return () => clearInterval(interval)
+  }, [])
+
   useEffect(() => {
     const fetchGateStatus = () => {
       fetch('/api/status')
@@ -47,7 +66,6 @@ export default function Home() {
 
     fetchGateStatus()
     const interval = setInterval(fetchGateStatus, 15000)
-
     return () => clearInterval(interval)
   }, [])
 
@@ -62,23 +80,6 @@ export default function Home() {
         setFirebaseConnected(false)
         setFirebaseMsg('Request failed')
       })
-  }, [])
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setScanQueue(Math.floor(Math.random() * 5))
-      setRecent([
-        {
-          uid: '04A6F02B88',
-          ticketType: 'Tiket Harian',
-          gate: 'Gate-A',
-          status: 'VALID',
-          scannedAt: new Date().toLocaleTimeString()
-        }
-      ])
-    }, 16000)
-
-    return () => clearInterval(interval)
   }, [])
 
   return (
@@ -104,7 +105,7 @@ export default function Home() {
 
         <div className="grid gap-4 xl:grid-cols-3">
           <StatusCard title="Status Gate" value={status.online ? 'Online' : 'Offline'} note={`Gate: ${status.connectedGateNames?.join(', ') || status.connectedGates?.join(', ') || status.currentGate}`}></StatusCard>
-          <StatusCard title="Antrian Scan Offline" value={`${scanQueue}`} note="Data lokal menunggu sinkronisasi" />
+          <StatusCard title="Scan Hari Ini" value={`${recent.length}`} note="Data scan terbaru" />
           <StatusCard title="Firebase" value={firebaseConnected == null ? 'Checking...' : firebaseConnected ? 'Connected' : 'Disconnected'} note={firebaseMsg ?? '—'} />
         </div>
 
@@ -172,6 +173,25 @@ export default function Home() {
           </div>
         </section>
       </div>
+      {unregGate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setUnregGate(null)}>
+          <div className="mx-4 max-w-sm rounded-3xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-red-600">Perangkat Tidak Terdaftar</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Perangkat ini belum didaftarkan di sistem. Hubungi admin untuk mendaftarkan perangkat berikut:
+            </p>
+            <div className="mt-3 rounded-xl bg-slate-100 p-3 font-mono text-sm">
+              ID hardware: <span className="font-bold">{unregGate}</span>
+            </div>
+            <button
+              onClick={() => setUnregGate(null)}
+              className="mt-4 w-full rounded-xl bg-slate-800 py-2 text-sm font-medium text-white hover:bg-slate-700"
+            >
+              Tutup
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
