@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import initFirebaseAdmin from '@/lib/firebaseAdmin'
 import { getGateStatus } from '@/lib/gateDevices'
+import { getTodayStartJakarta, getTodayEndJakarta } from '@/lib/dateUtils'
 import type { GateStatus, ScanLog, TicketType } from '@/lib/types'
 
 const admin = initFirebaseAdmin()
@@ -25,11 +26,15 @@ export default async function handler(_req: NextApiRequest, res: NextApiResponse
   try {
     const db = admin.firestore()
     const status = await getGateStatus(db)
+    const todayStart = getTodayStartJakarta()
+    const todayEnd = getTodayEndJakarta()
 
     const snap = await db
       .collection('scanLogs')
+      .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(todayStart))
+      .where('createdAt', '<', admin.firestore.Timestamp.fromDate(todayEnd))
       .orderBy('createdAt', 'desc')
-      .limit(10)
+      .limit(5)
       .get()
 
     const scans: ScanLog[] = snap.docs.map((doc) => {

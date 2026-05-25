@@ -151,13 +151,13 @@ export default function Home() {
 
           <div className="mb-6 flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-semibold">Riwayat Scan Terakhir</h2>
-              <p className="text-sm text-slate-500">Data realtime dari Firestore / local queue</p>
+              <h2 className="text-xl font-semibold">Riwayat Scan Hari Ini</h2>
+              <p className="text-sm text-slate-500">Maksimal 5 data terbaru</p>
             </div>
           </div>
 
           <div className="space-y-2">
-            {recent.map((item) => (
+            {recent.slice(0, 5).map((item) => (
               <div key={item.uid + item.scannedAt} className="rounded-3xl border border-slate-200 p-4">
                 <div className="flex flex-wrap items-center gap-3">
                   <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-700">{item.status}</span>
