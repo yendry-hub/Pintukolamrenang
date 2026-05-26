@@ -386,52 +386,14 @@ void sendHeartbeat() {
     Log.println("GOOGLE: TLS gagal total");
   }
 
-  // Heartbeat ke Vercel
+  // Heartbeat via HTTPClient (lebih stabil dari raw HTTPS)
+  HTTPClient http;
   WiFiClientSecure client;
   client.setInsecure();
-  client.setTimeout(5);
-  if (!client.connect(API_HOST, 443)) {
-    Log.print("VERCEL TLS GAGAL, SSL err: ");
-    Log.println(client.getLastSSLError());
-    lastHeartbeatMillis = millis();
-    return;
-  }
-
-  // Kirim request HTTP via TLS langsung
-  // Test: GET halaman utama (static edge)
-  WiFiClientSecure getClient;
-  getClient.setInsecure();
-  getClient.setTimeout(5);
-  if (getClient.connect(API_HOST, 443)) {
-    getClient.print("GET / HTTP/1.1\r\nHost: ");
-    getClient.print(API_HOST);
-    getClient.print("\r\nConnection: close\r\n\r\n");
-    getClient.flush();
-    delay(200);
-    unsigned long t = millis() + 5000;
-    String resp;
-    while (millis() < t) {
-      if (getClient.available()) { char c = getClient.read(); resp += c; t = millis() + 2000; }
-      else if (!getClient.connected()) { delay(50); if (!getClient.available()) break; }
-      else delay(10);
-    }
-    Log.print("VERCEL GET /: ");
-    if (resp.indexOf("200 OK") >= 0) Log.println("200 OK (static works!)");
-    else if (resp.length() > 0) Log.println(resp.substring(0, 60));
-    else Log.println("no response");
-    getClient.stop();
-  }
-
-  // POST heartbeat
-  WiFiClientSecure hb;
-  hb.setInsecure();
-  hb.setTimeout(5);
-  if (!hb.connect(API_HOST, 443)) {
-    Log.print("VERCEL POST TLS GAGAL, SSL err: ");
-    Log.println(hb.getLastSSLError());
-    lastHeartbeatMillis = millis();
-    return;
-  }
+  client.setTimeout(10);
+  http.begin(client, HEARTBEAT_ENDPOINT);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("User-Agent", "ESP8266-GateSystem");
 
   String payload = "{";
   payload += "\"gateId\":\"" + String(GATE_ID) + "\",";
@@ -439,62 +401,26 @@ void sendHeartbeat() {
   payload += "\"secret\":\"" + String(GATE_SECRET) + "\",";
   payload += "\"ipAddress\":\"" + WiFi.localIP().toString() + "\",";
   payload += "\"firmwareVersion\":\"" + String(FIRMWARE_VERSION) + "\",";
-  payload += "\"commandExecuted\":false,";
   payload += "\"scanAck\":\"" + String(pendingScanAck ? lastScannedUid : "") + "\"";
   payload += "}";
   if (pendingScanAck) pendingScanAck = false;
 
-  hb.print("POST /api/gate-heartbeat HTTP/1.1\r\n");
-  hb.print("Host: ");
-  hb.print(API_HOST);
-  hb.print("\r\n");
-  hb.print("User-Agent: ESP8266\r\n");
-  hb.print("Content-Type: application/json\r\n");
-  hb.print("Content-Length: ");
-  hb.print(payload.length());
-  hb.print("\r\n");
-  hb.print("Connection: close\r\n");
-  hb.print("\r\n");
-  hb.print(payload);
-  hb.flush();
-  delay(100);
+  int httpCode = http.POST(payload);
+  String response = http.getString();
 
-  // Baca response
-  unsigned long timeout = millis() + 12000;
-  String response;
-  while (millis() < timeout) {
-    if (hb.available()) {
-      char c = hb.read();
-      response += c;
-      timeout = millis() + 2000;
-    } else if (!hb.connected()) {
-      delay(50);
-      if (!hb.available()) break;
-    } else {
-      delay(10);
-    }
-  }
-  hb.stop();
-
-  if (response.indexOf("200 OK") >= 0) {
-    Log.println("HEARTBEAT OK");
+  if (httpCode == HTTP_CODE_OK) {
+    Log.println("HEARTBEAT OK: 200");
     if (response.indexOf("\"command\":\"OPEN\"") >= 0) {
       Log.println("COMMAND: OPEN diterima!");
       openGate();
     }
-  } else if (response.indexOf("301") >= 0 || response.indexOf("302") >= 0) {
-    Log.println("HEARTBEAT redirect");
-  } else if (response.indexOf("401") >= 0) {
-    Log.println("HEARTBEAT 401 - secret salah");
-  } else if (response.length() > 0) {
-    Log.print("HEARTBEAT: ");
-    Log.println(response.substring(0, 120));
+  } else if (httpCode > 0) {
+    Log.printf("HEARTBEAT DITOLAK %d: %s\n", httpCode, response.c_str());
   } else {
-    Log.print("HEARTBEAT no response (connected: ");
-    Log.print(hb.connected());
-    Log.println(")");
+    Log.printf("HEARTBEAT GAGAL TERKIRIM: %s\n", http.errorToString(httpCode).c_str());
   }
 
+  http.end();
   lastHeartbeatMillis = millis();
 }
 
