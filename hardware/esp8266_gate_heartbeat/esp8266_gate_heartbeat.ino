@@ -78,6 +78,10 @@ const unsigned long STATUS_LED_INTERVAL_MS = 5000;
 const unsigned long CARD_DETECTED_LED_MS = 120;
 
 void flashCardDetectedLed();
+void checkCardLed();
+void openGate();
+void checkGateClose();
+void blinkStatusLedIfDue();
 
 // Cooldown agar kartu yang sama tidak membuka gate berkali-kali.
 String lastUid = "";
@@ -127,7 +131,9 @@ void setup() {
   pinMode(WIEGAND_D1_PIN, INPUT_PULLUP);
   pinMode(STATUS_LED_PIN, OUTPUT);
   digitalWrite(STATUS_LED_PIN, HIGH);
-  blinkStatusLed();
+  digitalWrite(STATUS_LED_PIN, LOW);
+  delay(120);
+  digitalWrite(STATUS_LED_PIN, HIGH);
 
   attachInterrupt(digitalPinToInterrupt(WIEGAND_D0_PIN), handleWiegandD0, FALLING);
   attachInterrupt(digitalPinToInterrupt(WIEGAND_D1_PIN), handleWiegandD1, FALLING);
