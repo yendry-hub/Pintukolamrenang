@@ -274,19 +274,6 @@ void connectToOpenWiFi() {
   Log.print("Mencoba menghubungkan ke: ");
   Log.println(targetSSID);
 
-  // 2. Gunakan HANYA nama SSID, tanpa parameter password kosong ("")
-  // Sesuaikan IP ini dengan subnet router Merista Raya Waterboom
-  IPAddress local_IP(192, 168, 0, 200); // Contoh IP statis untuk ESP8266
-  IPAddress gateway(192, 168, 0, 1);    // IP Router
-  IPAddress subnet(255, 255, 255, 0);
-  IPAddress primaryDNS(8, 8, 8, 8);     // Google DNS
-  IPAddress secondaryDNS(1, 1, 1, 1);
-
-  if (!WiFi.config(local_IP, gateway, subnet, primaryDNS, secondaryDNS)) {
-    Log.println("Gagal mengatur Static IP!");
-  }
-
-  // Lanjutkan dengan WiFi.begin...
   WiFi.begin(targetSSID.c_str());
 
   unsigned long start = millis();
