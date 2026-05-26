@@ -15,6 +15,34 @@ export default function Home() {
     setGateLoading(gateId)
     setGateFeedback(null)
 
+    // Fast path: coba langsung ke ESP
+    const gateInfo = status.gates?.find((g) => g.gateId === gateId)
+    const ip = gateInfo?.ipAddress
+    let directOk = false
+    if (ip) {
+      try {
+        const ctrl = new AbortController()
+        setTimeout(() => ctrl.abort(), 3000)
+        const r = await fetch(`http://${ip}/open`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command: 'OPEN', gateId }),
+          signal: ctrl.signal,
+        })
+        directOk = r.ok
+      } catch {
+        // mixed content atau ESP tidak reachable — lanjut ke slow path
+      }
+    }
+
+    if (directOk) {
+      setGateFeedback({ gateId, ok: true, msg: 'Gate opened!' })
+      setGateLoading(null)
+      setTimeout(() => setGateFeedback(null), 3000)
+      return
+    }
+
+    // Slow path: via Firestore (heartbeat, maks 15 detik)
     try {
       const ctrl = new AbortController()
       setTimeout(() => ctrl.abort(), 10000)
@@ -25,8 +53,8 @@ export default function Home() {
         signal: ctrl.signal
       })
       const data = await res.json()
-      if (res.ok && data.command === 'OPEN') {
-        setGateFeedback({ gateId, ok: true, msg: 'Perintah dikirim! Gate akan terbuka dalam 15 detik' })
+      if (res.ok) {
+        setGateFeedback({ gateId, ok: true, msg: 'Perintah dikirim via heartbeat (maks 15 detik)' })
       } else {
         setGateFeedback({ gateId, ok: false, msg: data.error || 'Gagal' })
       }
