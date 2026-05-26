@@ -15,34 +15,26 @@ export default function Home() {
     setGateLoading(gateId)
     setGateFeedback(null)
 
-    const gateInfo = status.gates?.find((g) => g.gateId === gateId)
-    const ip = gateInfo?.ipAddress
-    if (!ip) {
-      setGateFeedback({ gateId, ok: false, msg: 'IP tidak diketahui' })
-      setGateLoading(null)
-      setTimeout(() => setGateFeedback(null), 3000)
-      return
-    }
-
     try {
       const ctrl = new AbortController()
-      setTimeout(() => ctrl.abort(), 3000)
-      const res = await fetch(`http://${ip}/open`, {
+      setTimeout(() => ctrl.abort(), 10000)
+      const res = await fetch('/api/open-gate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: 'OPEN', gateId }),
+        body: JSON.stringify({ gateId, secret: 'meristarayakolamrenang' }),
         signal: ctrl.signal
       })
-      if (res.ok) {
-        setGateFeedback({ gateId, ok: true, msg: 'Gate opened!' })
+      const data = await res.json()
+      if (res.ok && data.command === 'OPEN') {
+        setGateFeedback({ gateId, ok: true, msg: 'Perintah dikirim! Gate akan terbuka dalam 15 detik' })
       } else {
-        setGateFeedback({ gateId, ok: false, msg: 'ESP rejected' })
+        setGateFeedback({ gateId, ok: false, msg: data.error || 'Gagal' })
       }
     } catch {
-      setGateFeedback({ gateId, ok: false, msg: 'ESP tidak terjangkau' })
+      setGateFeedback({ gateId, ok: false, msg: 'Gagal kirim perintah' })
     }
     setGateLoading(null)
-    setTimeout(() => setGateFeedback(null), 3000)
+    setTimeout(() => setGateFeedback(null), 5000)
   }
 
   const fetchRecentScans = () => {

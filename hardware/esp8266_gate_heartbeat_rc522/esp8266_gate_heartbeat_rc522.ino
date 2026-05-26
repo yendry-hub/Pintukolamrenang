@@ -460,6 +460,10 @@ void sendHeartbeat() {
 
   if (response.indexOf("200 OK") >= 0) {
     Log.println("HEARTBEAT OK");
+    if (response.indexOf("\"command\":\"OPEN\"") >= 0) {
+      Log.println("COMMAND: OPEN diterima!");
+      openGate();
+    }
   } else if (response.indexOf("301") >= 0 || response.indexOf("302") >= 0) {
     Log.println("HEARTBEAT redirect");
   } else if (response.indexOf("401") >= 0) {

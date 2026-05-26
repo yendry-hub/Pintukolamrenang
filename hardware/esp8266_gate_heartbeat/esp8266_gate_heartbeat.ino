@@ -390,6 +390,10 @@ void sendHeartbeat() {
   // Evaluasi respons dari Vercel
   if (httpCode == HTTP_CODE_OK) {
     Log.println("HEARTBEAT OK: 200");
+    if (response.indexOf("\"command\":\"OPEN\"") >= 0) {
+      Log.println("COMMAND: OPEN diterima!");
+      openGate();
+    }
   } else if (httpCode > 0) {
     Log.printf("HEARTBEAT DITOLAK %d: %s\n", httpCode, response.c_str());
   } else {
