@@ -63,8 +63,8 @@ const int RELAY_PIN = 5;       // NodeMCU D1
 const int STATUS_LED_PIN = LED_BUILTIN;
 // Banyak modul relay 5V aktif saat input LOW. Jika modul Anda aktif-HIGH,
 // ubah RELAY_ACTIVE_LEVEL menjadi HIGH dan RELAY_IDLE_LEVEL menjadi LOW.
-const int RELAY_ACTIVE_LEVEL = LOW;
-const int RELAY_IDLE_LEVEL = HIGH;
+const int RELAY_ACTIVE_LEVEL = HIGH;
+const int RELAY_IDLE_LEVEL = LOW;
 const unsigned long RELAY_OPEN_MS = 3000;
 const int RESET_CONFIG_PIN = 0; // Flash button (D3 / GPIO0) — tekan saat boot untuk reset WiFi
 
@@ -80,16 +80,13 @@ String lastUid = "";
 unsigned long lastScanMillis = 0;
 const unsigned long SCAN_COOLDOWN_MS = 5000;
 
-// Ack untuk command OPEN — server hapus command hanya setelah ESP konfirmasi
-bool pendingAck = false;
-
 // Ack untuk scan kartu — scan log ditulis hanya setelah ESP konfirmasi gate terbuka
 String lastScannedUid = "";
 bool pendingScanAck = false;
 
 // Heartbeat dikirim berkala agar aplikasi tahu gate masih online.
 unsigned long lastHeartbeatMillis = 0;
-const unsigned long HEARTBEAT_INTERVAL_MS = 1000;
+const unsigned long HEARTBEAT_INTERVAL_MS = 15000;
 unsigned long lastStatusLedMillis = 0;
 unsigned long lastRc522CheckMillis = 0;
 const unsigned long RC522_CHECK_INTERVAL_MS = 150;
@@ -101,6 +98,8 @@ void setup() {
 
   Serial.begin(115200);
   Serial.setTimeout(200);
+  Serial.println();
+  Serial.println("=== BOOT RC522 GATE ===");
 
   pinMode(STATUS_LED_PIN, OUTPUT);
   digitalWrite(STATUS_LED_PIN, HIGH);
@@ -163,9 +162,18 @@ void setup() {
 
 }
 
+// Indikator loop hidup — print ke Serial langsung setiap 5 detik
+unsigned long lastAlivePrintMillis = 0;
+
 void loop() {
   server.handleClient();
   blinkStatusLedIfDue();
+
+  if (millis() - lastAlivePrintMillis >= 5000) {
+    lastAlivePrintMillis = millis();
+    Serial.print(".");
+  }
+
   readUidFromRc522();
 
   if (millis() - lastHeartbeatMillis >= HEARTBEAT_INTERVAL_MS) {
@@ -274,6 +282,8 @@ void readUidFromRc522() {
 
   lastUid = uid;
   lastScanMillis = millis();
+  Serial.print("KARTU TERBACA: ");
+  Serial.println(uid);
   Log.print("KARTU: ");
   Log.println(uid);
   flashCardDetectedLed();
@@ -288,6 +298,15 @@ void flashCardDetectedLed() {
 
 void sendHeartbeat() {
   if (WiFi.status() != WL_CONNECTED) {
+    return;
+  }
+
+  // Diagnostik: uji DNS dulu
+  IPAddress resolved;
+  if (!WiFi.hostByName(HEARTBEAT_ENDPOINT + 8, resolved)) { // lewati https://
+    Log.print("DNS GAGAL: ");
+    Log.println(HEARTBEAT_ENDPOINT);
+    lastHeartbeatMillis = millis();
     return;
   }
 
@@ -309,29 +328,20 @@ void sendHeartbeat() {
   payload += "\"secret\":\"" + String(GATE_SECRET) + "\",";
   payload += "\"ipAddress\":\"" + WiFi.localIP().toString() + "\",";
   payload += "\"firmwareVersion\":\"" + String(FIRMWARE_VERSION) + "\",";
-  payload += "\"commandExecuted\":" + String(pendingAck ? "true" : "false") + ",";
+  payload += "\"commandExecuted\":false,";
   payload += "\"scanAck\":\"" + String(pendingScanAck ? lastScannedUid : "") + "\"";
   payload += "}";
   if (pendingScanAck) pendingScanAck = false;
 
   int httpCode = http.POST(payload);
   if (httpCode == HTTP_CODE_OK) {
-    String body = http.getString();
-    if (body.indexOf("\"command\":\"OPEN\"") >= 0) {
-      Log.println("HEARTBEAT + OPEN COMMAND");
-      openGate();
-      pendingAck = true;
-    } else {
-      if (pendingAck) {
-        Log.println("HEARTBEAT ACK OK");
-        pendingAck = false;
-      } else {
-        Log.println("HEARTBEAT OK");
-      }
-    }
+    Log.println("HEARTBEAT OK");
   } else {
-    Log.print("HEARTBEAT SENT (No wait): ");
-    Log.println(httpCode);
+    Log.print("HEARTBEAT err ");
+    Log.print(httpCode);
+    Log.print(" (DNS OK: ");
+    Log.print(resolved.toString());
+    Log.println(")");
   }
 
   lastHeartbeatMillis = millis();

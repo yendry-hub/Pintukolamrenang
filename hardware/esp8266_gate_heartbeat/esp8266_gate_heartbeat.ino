@@ -72,9 +72,6 @@ String lastUid = "";
 unsigned long lastScanMillis = 0;
 const unsigned long SCAN_COOLDOWN_MS = 5000;
 
-// Ack untuk command OPEN — server hapus command hanya setelah ESP konfirmasi
-bool pendingAck = false;
-
 // Ack untuk scan kartu — scan log ditulis hanya setelah ESP konfirmasi gate terbuka
 String lastScannedUid = "";
 bool pendingScanAck = false;
@@ -87,7 +84,7 @@ const unsigned long WIEGAND_FRAME_GAP_MS = 35;
 
 // Heartbeat dikirim berkala agar aplikasi tahu gate masih online.
 unsigned long lastHeartbeatMillis = 0;
-const unsigned long HEARTBEAT_INTERVAL_MS = 1000;
+const unsigned long HEARTBEAT_INTERVAL_MS = 15000;
 unsigned long lastStatusLedMillis = 0;
 
 void ICACHE_RAM_ATTR handleWiegandD0() {
@@ -316,6 +313,15 @@ void sendHeartbeat() {
     return;
   }
 
+  // Diagnostik: uji DNS dulu
+  IPAddress resolved;
+  if (!WiFi.hostByName(HEARTBEAT_ENDPOINT + 8, resolved)) { // lewati https://
+    Log.print("DNS GAGAL: ");
+    Log.println(HEARTBEAT_ENDPOINT);
+    lastHeartbeatMillis = millis();
+    return;
+  }
+
   HTTPClient http;
   WiFiClientSecure client;
 
@@ -334,29 +340,20 @@ void sendHeartbeat() {
   payload += "\"secret\":\"" + String(GATE_SECRET) + "\",";
   payload += "\"ipAddress\":\"" + WiFi.localIP().toString() + "\",";
   payload += "\"firmwareVersion\":\"" + String(FIRMWARE_VERSION) + "\",";
-  payload += "\"commandExecuted\":" + String(pendingAck ? "true" : "false") + ",";
+  payload += "\"commandExecuted\":false,";
   payload += "\"scanAck\":\"" + String(pendingScanAck ? lastScannedUid : "") + "\"";
   payload += "}";
   if (pendingScanAck) pendingScanAck = false;
 
   int httpCode = http.POST(payload);
   if (httpCode == HTTP_CODE_OK) {
-    String body = http.getString();
-    if (body.indexOf("\"command\":\"OPEN\"") >= 0) {
-      Log.println("HEARTBEAT + OPEN COMMAND");
-      openGate();
-      pendingAck = true;
-    } else {
-      if (pendingAck) {
-        Log.println("HEARTBEAT ACK OK");
-        pendingAck = false;
-      } else {
-        Log.println("HEARTBEAT OK");
-      }
-    }
+    Log.println("HEARTBEAT OK");
   } else {
-    Log.print("HEARTBEAT SENT (No wait): ");
-    Log.println(httpCode);
+    Log.print("HEARTBEAT err ");
+    Log.print(httpCode);
+    Log.print(" (DNS OK: ");
+    Log.print(resolved.toString());
+    Log.println(")");
   }
 
   lastHeartbeatMillis = millis();

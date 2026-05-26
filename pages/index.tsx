@@ -3,8 +3,6 @@ import { useEffect, useState } from 'react'
 import StatusCard from '@/components/StatusCard'
 import type { GateStatus, ScanLog } from '@/lib/types'
 
-const GATE_SECRET = process.env.NEXT_PUBLIC_ESP_GATE_SECRET || ''
-
 export default function Home() {
   const [status, setStatus] = useState<GateStatus>({ online: true, lastSeen: null, currentGate: 'Gate-A' })
   const [recent, setRecent] = useState<ScanLog[]>([])
@@ -12,57 +10,38 @@ export default function Home() {
   const [firebaseMsg, setFirebaseMsg] = useState<string | null>(null)
   const [gateLoading, setGateLoading] = useState<string | null>(null)
   const [gateFeedback, setGateFeedback] = useState<{ gateId: string; ok: boolean; msg: string } | null>(null)
-  const [unregGate, setUnregGate] = useState<string | null>(null)
 
   const handleOpenGate = async (gateId: string) => {
     setGateLoading(gateId)
     setGateFeedback(null)
-    setUnregGate(null)
 
-    // Coba kirim langsung ke ESP (lebih cepat, tanpa Vercel)
     const gateInfo = status.gates?.find((g) => g.gateId === gateId)
     const ip = gateInfo?.ipAddress
-    if (ip) {
-      try {
-        const ctrl = new AbortController()
-        setTimeout(() => ctrl.abort(), 3000)
-        const direct = await fetch(`http://${ip}/open`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command: 'OPEN', gateId }),
-          signal: ctrl.signal
-        })
-        if (direct.ok) {
-          setGateFeedback({ gateId, ok: true, msg: 'Gate opened!' })
-          setGateLoading(null)
-          setTimeout(() => setGateFeedback(null), 3000)
-          return
-        }
-      } catch {
-        // Gagal direct — lanjut fallback ke Vercel
-      }
+    if (!ip) {
+      setGateFeedback({ gateId, ok: false, msg: 'IP tidak diketahui' })
+      setGateLoading(null)
+      setTimeout(() => setGateFeedback(null), 3000)
+      return
     }
 
-    // Fallback: lewat Vercel → Firestore → ESP (heartbeat polling 1 detik)
     try {
-      const res = await fetch('/api/open-gate', {
+      const ctrl = new AbortController()
+      setTimeout(() => ctrl.abort(), 3000)
+      const res = await fetch(`http://${ip}/open`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gateId, secret: GATE_SECRET })
+        body: JSON.stringify({ command: 'OPEN', gateId }),
+        signal: ctrl.signal
       })
-      const data = await res.json()
-      if (data?.result === 'OPEN') {
-        setGateFeedback({ gateId, ok: true, msg: 'Perintah terkirim' })
-      } else if (data?.reason?.includes('not registered')) {
-        setUnregGate(gateId)
+      if (res.ok) {
+        setGateFeedback({ gateId, ok: true, msg: 'Gate opened!' })
       } else {
-        setGateFeedback({ gateId, ok: false, msg: data?.reason || data?.error || 'Gagal' })
+        setGateFeedback({ gateId, ok: false, msg: 'ESP rejected' })
       }
     } catch {
-      setGateFeedback({ gateId, ok: false, msg: 'Gagal terhubung' })
-    } finally {
-      setGateLoading(null)
+      setGateFeedback({ gateId, ok: false, msg: 'ESP tidak terjangkau' })
     }
+    setGateLoading(null)
     setTimeout(() => setGateFeedback(null), 3000)
   }
 
@@ -199,25 +178,6 @@ export default function Home() {
           </div>
         </section>
       </div>
-      {unregGate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setUnregGate(null)}>
-          <div className="mx-4 max-w-sm rounded-3xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold text-red-600">Perangkat Tidak Terdaftar</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              Perangkat ini belum didaftarkan di sistem. Hubungi admin untuk mendaftarkan perangkat berikut:
-            </p>
-            <div className="mt-3 rounded-xl bg-slate-100 p-3 font-mono text-sm">
-              ID hardware: <span className="font-bold">{unregGate}</span>
-            </div>
-            <button
-              onClick={() => setUnregGate(null)}
-              className="mt-4 w-full rounded-xl bg-slate-800 py-2 text-sm font-medium text-white hover:bg-slate-700"
-            >
-              Tutup
-            </button>
-          </div>
-        </div>
-      )}
     </main>
   )
 }
