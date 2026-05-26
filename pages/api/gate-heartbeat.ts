@@ -63,18 +63,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    // Baca gateCommands — perintah dari dashboard (OPEN gate, dll)
-    let command: string | null = null
-    const cmdSnap = await db.collection('gateCommands').doc(id).get()
-    if (cmdSnap.exists) {
-      const cmdData = cmdSnap.data()
-      if (cmdData?.command) {
-        command = String(cmdData.command)
-        await cmdSnap.ref.delete()
-      }
-    }
-
-    return res.status(200).json({ result: 'OK', gateId: id, ...(command ? { command } : {}) })
+    return res.status(200).json({ result: 'OK', gateId: id })
   } catch (error: any) {
     console.error('/api/gate-heartbeat error:', error)
     return res.status(500).json({ error: error?.message || 'Failed to update gate heartbeat' })
