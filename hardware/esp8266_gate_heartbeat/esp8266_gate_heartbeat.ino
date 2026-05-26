@@ -99,6 +99,9 @@ unsigned long lastHeartbeatMillis = 0;
 const unsigned long HEARTBEAT_INTERVAL_MS = 15000;
 unsigned long lastStatusLedMillis = 0;
 unsigned long gateOpenUntil = 0;
+unsigned long cardLedUntil = 0;
+bool blinkLedOn = false;
+unsigned long blinkLedUntil = 0;
 
 void ICACHE_RAM_ATTR handleWiegandD0() {
   wiegandData = (wiegandData << 1);
@@ -212,6 +215,7 @@ void loop() {
   server.handleClient();
   if (WiFi.status() == WL_CONNECTED) ArduinoOTA.handle();
   checkGateClose();
+  checkCardLed();
   blinkStatusLedIfDue();
 
   if (millis() - lastAlivePrintMillis >= 5000) {
@@ -349,8 +353,14 @@ String parseWiegandUid(unsigned long rawData, int bitCount) {
 
 void flashCardDetectedLed() {
   digitalWrite(STATUS_LED_PIN, LOW);
-  delay(CARD_DETECTED_LED_MS);
-  digitalWrite(STATUS_LED_PIN, HIGH);
+  cardLedUntil = millis() + CARD_DETECTED_LED_MS;
+}
+
+void checkCardLed() {
+  if (cardLedUntil && millis() >= cardLedUntil) {
+    digitalWrite(STATUS_LED_PIN, HIGH);
+    cardLedUntil = 0;
+  }
 }
 
 void sendHeartbeat() {
@@ -465,16 +475,19 @@ void checkGateClose() {
 }
 
 void blinkStatusLedIfDue() {
+  if (blinkLedUntil) {
+    if (millis() >= blinkLedUntil) {
+      digitalWrite(STATUS_LED_PIN, HIGH);
+      blinkLedUntil = 0;
+      blinkLedOn = false;
+    }
+    return;
+  }
   if (millis() - lastStatusLedMillis < STATUS_LED_INTERVAL_MS) {
     return;
   }
-
   lastStatusLedMillis = millis();
-  blinkStatusLed();
-}
-
-void blinkStatusLed() {
   digitalWrite(STATUS_LED_PIN, LOW);
-  delay(120);
-  digitalWrite(STATUS_LED_PIN, HIGH);
+  blinkLedOn = true;
+  blinkLedUntil = millis() + 120;
 }
