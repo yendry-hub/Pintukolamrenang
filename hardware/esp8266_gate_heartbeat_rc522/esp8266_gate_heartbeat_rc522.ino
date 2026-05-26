@@ -441,8 +441,8 @@ void sendHeartbeat() {
   hb.flush();
   delay(100);
 
-  // Baca response (timeout pendek — Vercel return 504 setelah 300s)
-  unsigned long timeout = millis() + 5000;
+  // Baca response
+  unsigned long timeout = millis() + 12000;
   String response;
   while (millis() < timeout) {
     if (hb.available()) {
