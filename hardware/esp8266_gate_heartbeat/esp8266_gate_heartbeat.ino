@@ -98,6 +98,7 @@ const unsigned long WIEGAND_FRAME_GAP_MS = 35;
 unsigned long lastHeartbeatMillis = 0;
 const unsigned long HEARTBEAT_INTERVAL_MS = 15000;
 unsigned long lastStatusLedMillis = 0;
+unsigned long gateOpenUntil = 0;
 
 void ICACHE_RAM_ATTR handleWiegandD0() {
   wiegandData = (wiegandData << 1);
@@ -194,8 +195,8 @@ void setup() {
   server.on("/open", HTTP_POST, []() {
     server.sendHeader("Access-Control-Allow-Origin", "*");
     Log.println("Perintah OPEN diterima!");
-    openGate();
     server.send(200, "application/json", "{\"status\":\"OK\", \"message\":\"Gate " + String(GATE_ID) + " Opened\"}");
+    openGate();
   });
 
   // Mulai server
@@ -210,6 +211,7 @@ unsigned long lastAlivePrintMillis = 0;
 void loop() {
   server.handleClient();
   if (WiFi.status() == WL_CONNECTED) ArduinoOTA.handle();
+  checkGateClose();
   blinkStatusLedIfDue();
 
   if (millis() - lastAlivePrintMillis >= 5000) {
@@ -451,9 +453,15 @@ void sendUid(const String& uid) {
 
 void openGate() {
   digitalWrite(RELAY_PIN, RELAY_ACTIVE_LEVEL);
-  delay(RELAY_OPEN_MS);
-  digitalWrite(RELAY_PIN, RELAY_IDLE_LEVEL);
+  gateOpenUntil = millis() + RELAY_OPEN_MS;
   Log.println("GATE OPENED");
+}
+
+void checkGateClose() {
+  if (gateOpenUntil && millis() >= gateOpenUntil) {
+    digitalWrite(RELAY_PIN, RELAY_IDLE_LEVEL);
+    gateOpenUntil = 0;
+  }
 }
 
 void blinkStatusLedIfDue() {
