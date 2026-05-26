@@ -3,6 +3,7 @@
 #include <ESP8266WebServer.h>
 #include <WiFiClientSecure.h>
 #include <ESP8266mDNS.h>
+#include <ArduinoOTA.h>
 
 // Ring buffer untuk log wireless (via browser http://<ip>/log)
 #define LOG_RING_SIZE 64
@@ -35,15 +36,26 @@ LogClass Log;
 ESP8266WebServer server(80);
 
 // Server Next.js. Ganti URL sesuai hasil deploy.
+// Vercel (blokir ESP8266 — gunakan self-host):
+//const char* UID_ENDPOINT = "https://pintukolamrenang.vercel.app/api/uid";
+//const char* HEARTBEAT_ENDPOINT = "https://pintukolamrenang.vercel.app/api/gate-heartbeat";
+//const char* API_HOST = "pintukolamrenang.vercel.app";
+
 const char* UID_ENDPOINT = "https://pintukolamrenang.vercel.app/api/uid";
 const char* HEARTBEAT_ENDPOINT = "https://pintukolamrenang.vercel.app/api/gate-heartbeat";
+const char* API_HOST = "pintukolamrenang.vercel.app"; // HANYA DOMAIN, TANPA HTTPS / PORT
+
+// Self-host API server (ganti IP_VPS dengan alamat VPS):
+//const char* UID_ENDPOINT = "https://IP_VPS:3001/api/uid";
+//const char* HEARTBEAT_ENDPOINT = "https://IP_VPS:3001/api/gate-heartbeat";
+//const char* API_HOST = "IP_VPS:3001";
 
 // Harus sama dengan ESP_GATE_SECRET di .env.local aplikasi.
 const char* GATE_SECRET = "meristarayakolamrenang";
 
 // Identitas gate. Untuk gate lain, ubah menjadi Gate-B, Gate-C, dst.
-const char* GATE_ID = "Gate-B";
-const char* GATE_NAME = "Gate B - Main Entrance";
+const char* GATE_ID = "Gate-A";
+const char* GATE_NAME = "Gate A - Main Entrance";
 const char* FIRMWARE_VERSION = "1.0.0";
 
 // Wiring ESP8266 NodeMCU:
@@ -131,6 +143,29 @@ void setup() {
     Log.print("Log: http://");
     Log.print(WiFi.localIP().toString());
     Log.println("/log");
+
+    // OTA — upload sketch via WiFi
+    ArduinoOTA.setHostname(GATE_ID);
+    ArduinoOTA.setPassword("kolamrenang");
+    ArduinoOTA.onStart([]() { Log.println("OTA mulai..."); });
+    ArduinoOTA.onEnd([]() { Log.println("\nOTA selesai"); });
+    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+      Log.printf("OTA progress: %u%%\r", (progress / (total / 100)));
+    });
+    ArduinoOTA.onError([](ota_error_t error) {
+      Log.printf("OTA error: %u\n", error);
+    });
+    ArduinoOTA.begin();
+    Log.println("OTA siap.");
+
+    // Test koneksi TCP ke server (tanpa TLS)
+    WiFiClient tcpTest;
+    if (tcpTest.connect(API_HOST, 443)) {
+      Log.println("TCP ke server: OK");
+      tcpTest.stop();
+    } else {
+      Log.println("TCP ke server: GAGAL");
+    }
   }
 
   // Endpoint "/log" — lihat log dari browser
@@ -169,9 +204,19 @@ void setup() {
 
 }
 
+// Indikator loop hidup — print ke Serial langsung setiap 5 detik
+unsigned long lastAlivePrintMillis = 0;
+
 void loop() {
   server.handleClient();
+  if (WiFi.status() == WL_CONNECTED) ArduinoOTA.handle();
   blinkStatusLedIfDue();
+
+  if (millis() - lastAlivePrintMillis >= 5000) {
+    lastAlivePrintMillis = millis();
+    Serial.print(".");
+  }
+
   readUidFromWiegand();
 
   if (millis() - lastHeartbeatMillis >= HEARTBEAT_INTERVAL_MS) {
@@ -185,35 +230,17 @@ void loop() {
 }
 
 void connectToOpenWiFi() {
+  Log.println("Mereset memori WiFi...");
+  
+  // 1. Bersihkan cache WiFi yang nyangkut (Sangat Penting)
+  WiFi.disconnect(true);
+  delay(1000); 
+  
   WiFi.mode(WIFI_STA);
-  WiFi.persistent(true);
-
-  // Coba koneksi tersimpan (dari boot sebelumnya)
-  WiFi.begin();
-  Log.print("Mencoba koneksi tersimpan");
-  unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < 5000) {
-    delay(500);
-    Log.print(".");
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Log.println();
-    Log.print("Terhubung ke ");
-    Log.println(WiFi.SSID());
-    Log.print("IP: ");
-    Log.println(WiFi.localIP());
-    sendHeartbeat();
-    return;
-  }
-
-  Log.println(" gagal. Scan WiFi terbuka...");
-  WiFi.disconnect();
-  delay(100);
 
   int n = WiFi.scanNetworks();
   if (n == 0) {
-    Log.println("Tidak ada WiFi. Jalan offline.");
+    Log.println("Tidak ada WiFi terdeteksi sama sekali. Jalan offline.");
     return;
   }
 
@@ -228,28 +255,44 @@ void connectToOpenWiFi() {
   }
 
   if (targetSSID == "") {
-    Log.println("Tidak ada WiFi tanpa password. Jalan offline.");
+    Log.println("Tidak ada WiFi terbuka (semua dipassword). Jalan offline.");
     return;
   }
 
-  Log.print("Menghubungkan ke: ");
+  Log.print("Mencoba menghubungkan ke: ");
   Log.println(targetSSID);
-  WiFi.begin(targetSSID.c_str(), "");
 
-  start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
+  // 2. Gunakan HANYA nama SSID, tanpa parameter password kosong ("")
+  // Sesuaikan IP ini dengan subnet router Merista Raya Waterboom
+  IPAddress local_IP(192, 168, 0, 200); // Contoh IP statis untuk ESP8266
+  IPAddress gateway(192, 168, 0, 1);    // IP Router
+  IPAddress subnet(255, 255, 255, 0);
+  IPAddress primaryDNS(8, 8, 8, 8);     // Google DNS
+  IPAddress secondaryDNS(1, 1, 1, 1);
+
+  if (!WiFi.config(local_IP, gateway, subnet, primaryDNS, secondaryDNS)) {
+    Log.println("Gagal mengatur Static IP!");
+  }
+
+  // Lanjutkan dengan WiFi.begin...
+  WiFi.begin(targetSSID.c_str());
+
+  unsigned long start = millis();
+  
+  // 3. Kita tambah toleransi waktunya menjadi 20 detik
+  while (WiFi.status() != WL_CONNECTED && millis() - start < 20000) {
     delay(500);
     Log.print(".");
   }
 
   if (WiFi.status() == WL_CONNECTED) {
     Log.println();
-    Log.print("Terhubung! IP: ");
+    Log.print("Sukses Terhubung! IP: ");
     Log.println(WiFi.localIP());
     sendHeartbeat();
   } else {
     Log.println();
-    Log.println("Gagal terhubung. Jalan offline.");
+    Log.println("GAGAL: Router/Hotspot menolak ESP8266.");
   }
 }
 
@@ -313,27 +356,20 @@ void sendHeartbeat() {
     return;
   }
 
-  // Diagnostik: uji DNS dulu
-  IPAddress resolved;
-  if (!WiFi.hostByName(HEARTBEAT_ENDPOINT + 8, resolved)) { // lewati https://
-    Log.print("DNS GAGAL: ");
-    Log.println(HEARTBEAT_ENDPOINT);
-    lastHeartbeatMillis = millis();
-    return;
-  }
-
   HTTPClient http;
   WiFiClientSecure client;
 
+  // Set insecure untuk mem-bypass verifikasi sertifikat Vercel
   client.setInsecure();
-  client.setTimeout(200);
+  
+  // Set timeout lebih lama (10 detik) untuk mengantisipasi Serverless "Cold Start" dari Vercel
+  client.setTimeout(10); 
 
   http.begin(client, HEARTBEAT_ENDPOINT);
-  http.setTimeout(1000);
-  http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
-
   http.addHeader("Content-Type", "application/json");
+  http.addHeader("User-Agent", "ESP8266-GateSystem");
 
+  // Menyusun payload JSON sesuai format asli Anda
   String payload = "{";
   payload += "\"gateId\":\"" + String(GATE_ID) + "\",";
   payload += "\"name\":\"" + String(GATE_NAME) + "\",";
@@ -343,21 +379,25 @@ void sendHeartbeat() {
   payload += "\"commandExecuted\":false,";
   payload += "\"scanAck\":\"" + String(pendingScanAck ? lastScannedUid : "") + "\"";
   payload += "}";
+
   if (pendingScanAck) pendingScanAck = false;
 
+  // Lakukan POST request
+  unsigned long startMillis = millis();
   int httpCode = http.POST(payload);
+  String response = http.getString();
+
+  // Evaluasi respons dari Vercel
   if (httpCode == HTTP_CODE_OK) {
-    Log.println("HEARTBEAT OK");
+    Log.println("HEARTBEAT OK: 200");
+  } else if (httpCode > 0) {
+    Log.printf("HEARTBEAT DITOLAK %d: %s\n", httpCode, response.c_str());
   } else {
-    Log.print("HEARTBEAT err ");
-    Log.print(httpCode);
-    Log.print(" (DNS OK: ");
-    Log.print(resolved.toString());
-    Log.println(")");
+    Log.printf("HEARTBEAT GAGAL TERKIRIM: %s\n", http.errorToString(httpCode).c_str());
   }
 
-  lastHeartbeatMillis = millis();
   http.end();
+  lastHeartbeatMillis = millis();
 }
 
 void sendUid(const String& uid) {

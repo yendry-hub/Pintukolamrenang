@@ -3,6 +3,7 @@
 #include <ESP8266WebServer.h>
 #include <WiFiClientSecure.h>
 #include <ESP8266mDNS.h>
+#include <ArduinoOTA.h>
 #include <SPI.h>
 #include <MFRC522.h>
 
@@ -37,8 +38,15 @@ LogClass Log;
 ESP8266WebServer server(80);
 
 // Server Next.js. Ganti URL sesuai hasil deploy.
+// Vercel (aktif untuk tes):
 const char* UID_ENDPOINT = "https://pintukolamrenang.vercel.app/api/uid";
 const char* HEARTBEAT_ENDPOINT = "https://pintukolamrenang.vercel.app/api/gate-heartbeat";
+const char* API_HOST = "pintukolamrenang.vercel.app";
+
+// Self-host API server (ganti IP_VPS dengan alamat VPS):
+//const char* UID_ENDPOINT = "https://IP_VPS:3001/api/uid";
+//const char* HEARTBEAT_ENDPOINT = "https://IP_VPS:3001/api/gate-heartbeat";
+//const char* API_HOST = "IP_VPS:3001";
 
 // Harus sama dengan ESP_GATE_SECRET di .env.local aplikasi.
 const char* GATE_SECRET = "meristarayakolamrenang";
@@ -124,6 +132,29 @@ void setup() {
     Log.print("Log: http://");
     Log.print(WiFi.localIP().toString());
     Log.println("/log");
+
+    // OTA — upload sketch via WiFi
+    ArduinoOTA.setHostname(GATE_ID);
+    ArduinoOTA.setPassword("kolamrenang");
+    ArduinoOTA.onStart([]() { Log.println("OTA mulai..."); });
+    ArduinoOTA.onEnd([]() { Log.println("\nOTA selesai"); });
+    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+      Log.printf("OTA progress: %u%%\r", (progress / (total / 100)));
+    });
+    ArduinoOTA.onError([](ota_error_t error) {
+      Log.printf("OTA error: %u\n", error);
+    });
+    ArduinoOTA.begin();
+    Log.println("OTA siap.");
+
+    // Test koneksi TCP ke server (tanpa TLS)
+    WiFiClient tcpTest;
+    if (tcpTest.connect(API_HOST, 443)) {
+      Log.println("TCP ke server: OK");
+      tcpTest.stop();
+    } else {
+      Log.println("TCP ke server: GAGAL");
+    }
   }
 
   // Endpoint "/log" — lihat log dari browser
@@ -167,6 +198,7 @@ unsigned long lastAlivePrintMillis = 0;
 
 void loop() {
   server.handleClient();
+  if (WiFi.status() == WL_CONNECTED) ArduinoOTA.handle();
   blinkStatusLedIfDue();
 
   if (millis() - lastAlivePrintMillis >= 5000) {
@@ -301,26 +333,87 @@ void sendHeartbeat() {
     return;
   }
 
-  // Diagnostik: uji DNS dulu
-  IPAddress resolved;
-  if (!WiFi.hostByName(HEARTBEAT_ENDPOINT + 8, resolved)) { // lewati https://
-    Log.print("DNS GAGAL: ");
-    Log.println(HEARTBEAT_ENDPOINT);
+  // Diagnostik: uji TLS ke server lain (google.com)
+  WiFiClientSecure diag;
+  diag.setInsecure();
+  diag.setTimeout(5);
+  if (diag.connect("google.com", 443)) {
+    diag.print("GET / HTTP/1.1\r\nHost: google.com\r\nConnection: close\r\n\r\n");
+    diag.flush();
+    delay(200);
+    String resp;
+    unsigned long t = millis() + 3000;
+    while (millis() < t) {
+      if (diag.available()) {
+        char c = diag.read();
+        resp += c;
+        t = millis() + 1000;
+      } else if (!diag.connected()) {
+        delay(50);
+        if (!diag.available()) break;
+      } else {
+        delay(10);
+      }
+    }
+    diag.stop();
+    if (resp.indexOf("200 OK") >= 0) {
+      Log.println("GOOGLE: OK (ESP TLS jalan)");
+    } else if (resp.length() > 0) {
+      Log.print("GOOGLE: ");
+      Log.println(resp.substring(0, 60));
+    } else {
+      Log.println("GOOGLE: no response");
+    }
+  } else {
+    Log.println("GOOGLE: TLS gagal total");
+  }
+
+  // Heartbeat ke Vercel
+  WiFiClientSecure client;
+  client.setInsecure();
+  client.setTimeout(5);
+  if (!client.connect(API_HOST, 443)) {
+    Log.print("VERCEL TLS GAGAL, SSL err: ");
+    Log.println(client.getLastSSLError());
     lastHeartbeatMillis = millis();
     return;
   }
 
-  HTTPClient http;
-  WiFiClientSecure client;
+  // Kirim request HTTP via TLS langsung
+  // Test: GET halaman utama (static edge)
+  WiFiClientSecure getClient;
+  getClient.setInsecure();
+  getClient.setTimeout(5);
+  if (getClient.connect(API_HOST, 443)) {
+    getClient.print("GET / HTTP/1.1\r\nHost: ");
+    getClient.print(API_HOST);
+    getClient.print("\r\nConnection: close\r\n\r\n");
+    getClient.flush();
+    delay(200);
+    unsigned long t = millis() + 5000;
+    String resp;
+    while (millis() < t) {
+      if (getClient.available()) { char c = getClient.read(); resp += c; t = millis() + 2000; }
+      else if (!getClient.connected()) { delay(50); if (!getClient.available()) break; }
+      else delay(10);
+    }
+    Log.print("VERCEL GET /: ");
+    if (resp.indexOf("200 OK") >= 0) Log.println("200 OK (static works!)");
+    else if (resp.length() > 0) Log.println(resp.substring(0, 60));
+    else Log.println("no response");
+    getClient.stop();
+  }
 
-  client.setInsecure();
-  client.setTimeout(200);
-
-  http.begin(client, HEARTBEAT_ENDPOINT);
-  http.setTimeout(1000);
-  http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
-
-  http.addHeader("Content-Type", "application/json");
+  // POST heartbeat
+  WiFiClientSecure hb;
+  hb.setInsecure();
+  hb.setTimeout(5);
+  if (!hb.connect(API_HOST, 443)) {
+    Log.print("VERCEL POST TLS GAGAL, SSL err: ");
+    Log.println(hb.getLastSSLError());
+    lastHeartbeatMillis = millis();
+    return;
+  }
 
   String payload = "{";
   payload += "\"gateId\":\"" + String(GATE_ID) + "\",";
@@ -333,19 +426,54 @@ void sendHeartbeat() {
   payload += "}";
   if (pendingScanAck) pendingScanAck = false;
 
-  int httpCode = http.POST(payload);
-  if (httpCode == HTTP_CODE_OK) {
+  hb.print("POST /api/gate-heartbeat HTTP/1.1\r\n");
+  hb.print("Host: ");
+  hb.print(API_HOST);
+  hb.print("\r\n");
+  hb.print("User-Agent: ESP8266\r\n");
+  hb.print("Content-Type: application/json\r\n");
+  hb.print("Content-Length: ");
+  hb.print(payload.length());
+  hb.print("\r\n");
+  hb.print("Connection: close\r\n");
+  hb.print("\r\n");
+  hb.print(payload);
+  hb.flush();
+  delay(100);
+
+  // Baca response (timeout pendek — Vercel return 504 setelah 300s)
+  unsigned long timeout = millis() + 5000;
+  String response;
+  while (millis() < timeout) {
+    if (hb.available()) {
+      char c = hb.read();
+      response += c;
+      timeout = millis() + 2000;
+    } else if (!hb.connected()) {
+      delay(50);
+      if (!hb.available()) break;
+    } else {
+      delay(10);
+    }
+  }
+  hb.stop();
+
+  if (response.indexOf("200 OK") >= 0) {
     Log.println("HEARTBEAT OK");
+  } else if (response.indexOf("301") >= 0 || response.indexOf("302") >= 0) {
+    Log.println("HEARTBEAT redirect");
+  } else if (response.indexOf("401") >= 0) {
+    Log.println("HEARTBEAT 401 - secret salah");
+  } else if (response.length() > 0) {
+    Log.print("HEARTBEAT: ");
+    Log.println(response.substring(0, 120));
   } else {
-    Log.print("HEARTBEAT err ");
-    Log.print(httpCode);
-    Log.print(" (DNS OK: ");
-    Log.print(resolved.toString());
+    Log.print("HEARTBEAT no response (connected: ");
+    Log.print(hb.connected());
     Log.println(")");
   }
 
   lastHeartbeatMillis = millis();
-  http.end();
 }
 
 void sendUid(const String& uid) {
