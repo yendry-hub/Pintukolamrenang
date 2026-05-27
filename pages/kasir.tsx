@@ -77,6 +77,8 @@ export default function KasirPage() {
   const [todaySummary, setTodaySummary] = useState<{ transactionCount: number; revenue: number }>({ transactionCount: 0, revenue: 0 })
   const [gateLoading, setGateLoading] = useState<string | null>(null)
   const [gateFeedback, setGateFeedback] = useState<{ gateId: string; ok: boolean; msg: string } | null>(null)
+  const [gateUid, setGateUid] = useState('')
+  const [gateTicketType, setGateTicketType] = useState('Manual')
 
   const handleOpenGate = async (gateId: string) => {
     setGateLoading(gateId)
@@ -100,6 +102,14 @@ export default function KasirPage() {
         body: JSON.stringify({ command: 'OPEN', gateId }),
         signal: ctrl.signal,
       })
+
+      // Log scan ke Firestore
+      fetch('/api/kasir-gate-scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gateId, uid: gateUid || undefined, ticketType: gateTicketType }),
+      })
+
       if (res.ok) {
         setGateFeedback({ gateId, ok: true, msg: 'Gate opened!' })
       } else {
@@ -834,7 +844,33 @@ export default function KasirPage() {
               <div className="rounded-3xl bg-white p-6 shadow-soft">
                 <div className="mb-6">
                   <h2 className="text-xl font-semibold">Kontrol Gate</h2>
-                  <p className="text-sm text-slate-500">Buka gate berdasarkan status koneksi</p>
+                  <p className="text-sm text-slate-500">Buka gate dan catat scan pengunjung</p>
+
+                  <div className="mt-4 flex flex-wrap gap-3 items-end">
+                    <div className="flex-1 min-w-[200px]">
+                      <label className="block text-xs font-medium text-slate-600 mb-1">UID Kartu (opsional)</label>
+                      <input
+                        type="text"
+                        value={gateUid}
+                        onChange={(e) => setGateUid(e.target.value)}
+                        placeholder="Scan atau ketik UID"
+                        className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <div className="w-40">
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Jenis Tiket</label>
+                      <select
+                        value={gateTicketType}
+                        onChange={(e) => setGateTicketType(e.target.value)}
+                        className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      >
+                        {['Manual', 'Tiket Harian', 'Member', 'VIP', 'Paket Keluarga', 'Tiket Anak', 'Tiket Dewasa'].map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
                   <div className="mt-4 flex flex-wrap gap-3">
                     {['Gate-A', 'Gate-B'].map((gateId) => {
                       const gateInfo = status.gates?.find((g) => g.gateId === gateId)
