@@ -67,7 +67,7 @@ export default function KasirPage() {
   const [quantity, setQuantity] = useState<number>(1)
   const [transactionLoading, setTransactionLoading] = useState(false)
   const [receipt, setReceipt] = useState<string | null>(null)
-  const [view, setView] = useState<'dashboard' | 'transaksi' | 'ringkasan' | 'riwayat' | 'grafik'>('dashboard')
+  const [view, setView] = useState<'dashboard' | 'transaksi' | 'ringkasan' | 'riwayat' | 'grafik' | 'kontrol-gate'>('dashboard')
   const [ticketPrices, setTicketPrices] = useState<Record<string, number>>(DEFAULT_TICKET_PRICES)
   const [offlineMode, setOfflineMode] = useState(false)
   const [pendingTransactions, setPendingTransactions] = useState(0)
@@ -75,6 +75,42 @@ export default function KasirPage() {
   const [ticketTypes, setTicketTypes] = useState<string[]>([])
   const [paymentMethods, setPaymentMethods] = useState<string[]>([])
   const [todaySummary, setTodaySummary] = useState<{ transactionCount: number; revenue: number }>({ transactionCount: 0, revenue: 0 })
+  const [gateLoading, setGateLoading] = useState<string | null>(null)
+  const [gateFeedback, setGateFeedback] = useState<{ gateId: string; ok: boolean; msg: string } | null>(null)
+
+  const handleOpenGate = async (gateId: string) => {
+    setGateLoading(gateId)
+    setGateFeedback(null)
+
+    const gateInfo = status.gates?.find((g) => g.gateId === gateId)
+    const ip = gateInfo?.ipAddress
+    if (!ip) {
+      setGateFeedback({ gateId, ok: false, msg: 'IP tidak diketahui' })
+      setGateLoading(null)
+      setTimeout(() => setGateFeedback(null), 3000)
+      return
+    }
+
+    try {
+      const ctrl = new AbortController()
+      setTimeout(() => ctrl.abort(), 3000)
+      const res = await fetch(`http://${ip}/open`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: 'OPEN', gateId }),
+        signal: ctrl.signal,
+      })
+      if (res.ok) {
+        setGateFeedback({ gateId, ok: true, msg: 'Gate opened!' })
+      } else {
+        setGateFeedback({ gateId, ok: false, msg: 'ESP rejected' })
+      }
+    } catch {
+      setGateFeedback({ gateId, ok: false, msg: 'ESP tidak terjangkau' })
+    }
+    setGateLoading(null)
+    setTimeout(() => setGateFeedback(null), 3000)
+  }
 
   const fetchConfig = async () => {
     try {
@@ -466,6 +502,12 @@ export default function KasirPage() {
                 >
                   Grafik Tren
                 </button>
+                <button
+                  onClick={() => setView('kontrol-gate')}
+                  className={`w-full text-left rounded-xl px-4 py-2 hover:bg-slate-50 ${view === 'kontrol-gate' ? 'bg-slate-100 font-semibold' : ''}`}
+                >
+                  Kontrol Gate
+                </button>
               </nav>
             </div>
           </aside>
@@ -783,6 +825,49 @@ export default function KasirPage() {
                         )
                       })}
                     </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {view === 'kontrol-gate' && (
+              <div className="rounded-3xl bg-white p-6 shadow-soft">
+                <div className="mb-6">
+                  <h2 className="text-xl font-semibold">Kontrol Gate</h2>
+                  <p className="text-sm text-slate-500">Buka gate berdasarkan status koneksi</p>
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    {['Gate-A', 'Gate-B'].map((gateId) => {
+                      const gateInfo = status.gates?.find((g) => g.gateId === gateId)
+                      const isOnline = gateInfo !== undefined ? gateInfo.online : status.online
+                      const isLoading = gateLoading === gateId
+                      const fb = gateFeedback?.gateId === gateId ? gateFeedback : null
+                      return (
+                        <button
+                          key={gateId}
+                          onClick={() => handleOpenGate(gateId)}
+                          disabled={!isOnline || isLoading}
+                          className={`rounded-xl px-5 py-3 font-medium transition-all ${
+                            !isOnline
+                              ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                              : isLoading
+                              ? 'bg-emerald-500 text-white cursor-wait'
+                              : fb?.ok
+                              ? 'bg-green-600 text-white'
+                              : fb
+                              ? 'bg-red-500 text-white'
+                              : 'bg-emerald-600 text-white shadow-soft hover:bg-emerald-700 active:scale-95'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className={`h-2 w-2 rounded-full ${isOnline ? 'bg-green-300 animate-pulse' : 'bg-slate-400'}`} />
+                            {gateInfo?.name || gateId}
+                          </div>
+                          <span className="block text-[10px] opacity-70">
+                            {isLoading ? 'Membuka...' : fb?.msg || (isOnline ? (gateInfo?.ipAddress || 'Online') : 'Offline')}
+                          </span>
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
               </div>
