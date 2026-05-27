@@ -411,7 +411,8 @@ void sendHeartbeat() {
 
 void sendUid(const String& uid) {
   if (WiFi.status() != WL_CONNECTED) {
-    Log.println("SCAN OFFLINE — ditolak, tidak ada koneksi");
+    Log.println("SCAN OFFLINE — relay open (fail-open)");
+    openGate();
     return;
   }
 
