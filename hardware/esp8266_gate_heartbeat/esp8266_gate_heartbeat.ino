@@ -411,8 +411,7 @@ void sendHeartbeat() {
 
 void sendUid(const String& uid) {
   if (WiFi.status() != WL_CONNECTED) {
-    Log.println("SCAN OFFLINE — relay open (fail-open)");
-    openGate();
+    Log.println("SCAN OFFLINE — ditolak, tidak ada koneksi");
     return;
   }
 
@@ -432,10 +431,8 @@ void sendUid(const String& uid) {
   payload += "\"secret\":\"" + String(GATE_SECRET) + "\"";
   payload += "}";
 
-  unsigned long requestStartMillis = millis();
   int httpCode = http.POST(payload);
   String response = http.getString();
-  bool requestTimedOut = millis() - requestStartMillis >= UID_CONFIRM_TIMEOUT_MS;
 
   Log.print("SCAN RESPONSE ");
   Log.print(httpCode);
@@ -446,9 +443,8 @@ void sendUid(const String& uid) {
     openGate();
     lastScannedUid = uid;
     pendingScanAck = true;
-  } else if (httpCode <= 0 || requestTimedOut) {
-    Log.println("NO OPEN CONFIRM WITHIN 2 SECONDS. FAIL-OPEN RELAY.");
-    openGate();
+  } else {
+    Log.println("SCAN DITOLAK — kartu tidak valid");
   }
 
   http.end();
