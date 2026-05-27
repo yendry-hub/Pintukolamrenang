@@ -54,53 +54,57 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-sky-700 to-cyan-600 text-white">
-      <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-12">
-        <div className="rounded-3xl bg-white p-8 shadow-soft text-slate-900">
-          <h1 className="mb-2 text-3xl font-semibold">Login Sistem</h1>
-          <p className="mb-4 text-slate-600">Masuk untuk mengelola tiket, transaksi, dan monitoring gate.</p>
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-sky-700 via-sky-600 to-cyan-600 px-4">
+      <div className="w-full max-w-sm animate-slide-up">
+        <div className="rounded-2xl border border-white/10 bg-white/95 p-7 shadow-modal backdrop-blur-sm">
+          <h1 className="text-2xl font-bold text-slate-900">Login Sistem</h1>
+          <p className="mt-1.5 text-sm text-slate-500">Masuk untuk mengelola tiket, transaksi, dan monitoring gate.</p>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <label className="block">
-              <span className="text-sm font-medium">Email</span>
+          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Email</label>
               <input
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 placeholder="admin@waterpark.id"
-                className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 focus:border-sky-500 focus:outline-none"
+                className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
                 required
               />
-            </label>
-            <label className="block">
-              <span className="text-sm font-medium">Password</span>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Password</label>
               <input
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder="••••••••"
-                className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 focus:border-sky-500 focus:outline-none"
+                className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
                 required
               />
-            </label>
-            {error ? <p className="text-sm text-red-600">{error}</p> : null}
+            </div>
+
+            {error ? (
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-600">{error}</p>
+            ) : null}
+
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-2xl bg-sky-600 px-4 py-3 text-white shadow-soft hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-medium text-white shadow-card transition-all hover:bg-sky-700 hover:shadow-card-hover active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? 'Memproses...' : 'Login'}
             </button>
           </form>
 
-          <p className="mt-6 text-sm text-slate-500">
+          <div className="mt-6 text-xs text-slate-400">
             Pastikan akun admin sudah dibuat di Firebase Authentication.
-          </p>
-          <div className="mt-6 text-sm text-slate-500">
-            <Link href="/" className="text-sky-600 hover:underline">Kembali ke Beranda</Link>
+          </div>
+          <div className="mt-3 text-xs">
+            <Link href="/" className="font-medium text-sky-600 hover:text-sky-700">&larr; Kembali ke Beranda</Link>
           </div>
         </div>
       </div>
-    </main>
+    </div>
   )
 }

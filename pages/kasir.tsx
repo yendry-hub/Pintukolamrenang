@@ -52,6 +52,21 @@ function escapeHtml(text: string): string {
     .replace(/'/g, '&#039;')
 }
 
+function NavButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full text-left rounded-lg px-3.5 py-2 text-sm font-medium transition-all ${
+        active
+          ? 'bg-emerald-50 text-emerald-700'
+          : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+      }`}
+    >
+      {label}
+    </button>
+  )
+}
+
 export default function KasirPage() {
   const router = useRouter()
   const [status, setStatus] = useState<GateStatus>({ online: false, lastSeen: null, currentGate: '-' })
@@ -86,38 +101,46 @@ export default function KasirPage() {
 
     const gateInfo = status.gates?.find((g) => g.gateId === gateId)
     const ip = gateInfo?.ipAddress
+
+    let espOk = false
+    let espMsg = ''
+
     if (!ip) {
-      setGateFeedback({ gateId, ok: false, msg: 'IP tidak diketahui' })
-      setGateLoading(null)
-      setTimeout(() => setGateFeedback(null), 3000)
-      return
-    }
-
-    try {
-      const ctrl = new AbortController()
-      setTimeout(() => ctrl.abort(), 3000)
-      const res = await fetch(`http://${ip}/open`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: 'OPEN', gateId }),
-        signal: ctrl.signal,
-      })
-
-      // Log scan ke Firestore
-      fetch('/api/kasir-gate-scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gateId, uid: gateUid || undefined, ticketType: gateTicketType }),
-      })
-
-      if (res.ok) {
-        setGateFeedback({ gateId, ok: true, msg: 'Gate opened!' })
-      } else {
-        setGateFeedback({ gateId, ok: false, msg: 'ESP rejected' })
+      espMsg = 'IP tidak diketahui'
+    } else {
+      try {
+        const ctrl = new AbortController()
+        setTimeout(() => ctrl.abort(), 3000)
+        const res = await fetch(`http://${ip}/open`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command: 'OPEN', gateId }),
+          signal: ctrl.signal,
+        })
+        espOk = res.ok
+        espMsg = espOk ? 'Gate opened!' : 'ESP rejected'
+      } catch {
+        espMsg = 'ESP tidak terjangkau'
       }
-    } catch {
-      setGateFeedback({ gateId, ok: false, msg: 'ESP tidak terjangkau' })
     }
+
+    // Log scan ke Firestore — selalu catat, termasuk saat ESP gagal
+    try {
+      await fetch('/api/kasir-gate-scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gateId,
+          uid: gateUid || undefined,
+          ticketType: gateTicketType,
+          note: `manual kasir — ${espMsg}`,
+        }),
+      })
+    } catch {
+      // scan log gagal — tidak perlu ganggu user
+    }
+
+    setGateFeedback({ gateId, ok: espOk || !!ip, msg: espMsg })
     setGateLoading(null)
     setTimeout(() => setGateFeedback(null), 3000)
   }
@@ -442,98 +465,63 @@ export default function KasirPage() {
 
   if (!authInitialized) {
     return (
-      <main className="min-h-screen bg-slate-100 text-slate-900">
-        <div className="mx-auto flex min-h-screen max-w-7xl items-center justify-center px-4 py-8">
-          <div className="rounded-3xl bg-white p-8 shadow-soft text-slate-900">Memeriksa autentikasi...</div>
-        </div>
-      </main>
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-50 to-white text-slate-900">
+        <div className="rounded-2xl border border-slate-100 bg-white p-8 shadow-card text-slate-900">Memeriksa autentikasi...</div>
+      </div>
     )
   }
 
   const chartMaxValue = Math.max(...stats.hourlyTrend, ...stats.dailyTrend, 1)
 
   return (
-    <main className="min-h-screen bg-slate-100 text-slate-900">
-      <div className="mx-auto max-w-7xl px-4 py-8">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
+      <div className="mx-auto max-w-7xl px-6 py-8">
         <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <span className="text-sm uppercase tracking-[0.25em] text-sky-700">Kasir Dashboard</span>
-            <h1 className="mt-2 text-3xl font-semibold">Dashboard Kasir</h1>
-            <p className="mt-2 text-sm text-slate-500">Buat transaksi dan lihat ringkasan penjualan tiket.</p>
-            <p className="mt-2 text-sm text-slate-500">
-              {offlineMode ? 'Mode offline aktif' : 'Online'} · {pendingTransactions} transaksi menunggu sinkron
+            <span className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-600">Kasir Dashboard</span>
+            <h1 className="mt-1.5 text-2xl font-bold text-slate-900">Dashboard Kasir</h1>
+            <p className="mt-1 text-sm text-slate-400">Buat transaksi dan lihat ringkasan penjualan tiket.</p>
+            <p className="mt-1 text-xs text-slate-400">
+              {offlineMode ? 'Mode offline aktif' : 'Online'} &middot; {pendingTransactions} transaksi menunggu sinkron
             </p>
           </div>
-          <div className="flex flex-wrap gap-3">
-            <button onClick={fetchConfig} className="rounded-2xl bg-sky-100 px-4 py-2 text-sky-700 shadow-soft hover:bg-sky-200" title="Refresh data dari server">
+          <div className="flex flex-wrap gap-2">
+            <button onClick={fetchConfig} className="rounded-xl bg-white border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 shadow-card transition-all hover:border-slate-300 hover:shadow-card-hover active:scale-[0.97]" title="Refresh data dari server">
               Refresh Data
             </button>
-            <button onClick={handleLogout} className="rounded-2xl bg-white px-4 py-2 text-slate-700 shadow-soft hover:bg-slate-50">
+            <button onClick={handleLogout} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-card transition-all hover:border-slate-300 hover:shadow-card-hover active:scale-[0.97]">
               Logout
             </button>
-            <Link href="/" className="rounded-2xl bg-slate-900 px-4 py-2 text-white shadow-soft hover:bg-slate-800">
-              Kembali ke Beranda
+            <Link href="/" className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-card transition-all hover:bg-slate-800 hover:shadow-card-hover active:scale-[0.97]">
+              Beranda
             </Link>
           </div>
         </div>
 
         <div className="mt-6 flex flex-col gap-6 md:flex-row">
           {/* Sidebar kiri */}
-          <aside className="md:w-64">
-            <div className="rounded-3xl bg-white p-4 shadow-soft">
-              <nav className="space-y-2">
-                <button
-                  onClick={() => setView('dashboard')}
-                  className={`w-full text-left rounded-xl px-4 py-2 hover:bg-slate-50 ${view === 'dashboard' ? 'bg-slate-100 font-semibold' : ''}`}
-                >
-                  Dashboard
-                </button>
-                <button
-                  onClick={() => setView('transaksi')}
-                  className={`w-full text-left rounded-xl px-4 py-2 hover:bg-slate-50 ${view === 'transaksi' ? 'bg-slate-100 font-semibold' : ''}`}
-                >
-                  Transaksi
-                </button>
-                <button
-                  onClick={() => setView('ringkasan')}
-                  className={`w-full text-left rounded-xl px-4 py-2 hover:bg-slate-50 ${view === 'ringkasan' ? 'bg-slate-100 font-semibold' : ''}`}
-                >
-                  Ringkasan
-                </button>
-                <button
-                  onClick={() => setView('riwayat')}
-                  className={`w-full text-left rounded-xl px-4 py-2 hover:bg-slate-50 ${view === 'riwayat' ? 'bg-slate-100 font-semibold' : ''}`}
-                >
-                  Riwayat Scan
-                </button>
-                <button
-                  onClick={() => setView('grafik')}
-                  className={`w-full text-left rounded-xl px-4 py-2 hover:bg-slate-50 ${view === 'grafik' ? 'bg-slate-100 font-semibold' : ''}`}
-                >
-                  Grafik Tren
-                </button>
-                <button
-                  onClick={() => setView('kontrol-gate')}
-                  className={`w-full text-left rounded-xl px-4 py-2 hover:bg-slate-50 ${view === 'kontrol-gate' ? 'bg-slate-100 font-semibold' : ''}`}
-                >
-                  Kontrol Gate
-                </button>
-              </nav>
-            </div>
+          <aside className="md:w-56 shrink-0">
+            <nav className="rounded-2xl border border-slate-100 bg-white p-2 shadow-card">
+              <NavButton label="Dashboard" active={view === 'dashboard'} onClick={() => setView('dashboard')} />
+              <NavButton label="Transaksi" active={view === 'transaksi'} onClick={() => setView('transaksi')} />
+              <NavButton label="Ringkasan" active={view === 'ringkasan'} onClick={() => setView('ringkasan')} />
+              <NavButton label="Riwayat Scan" active={view === 'riwayat'} onClick={() => setView('riwayat')} />
+              <NavButton label="Grafik Tren" active={view === 'grafik'} onClick={() => setView('grafik')} />
+              <NavButton label="Kontrol Gate" active={view === 'kontrol-gate'} onClick={() => setView('kontrol-gate')} />
+            </nav>
           </aside>
 
           {/* Konten utama berubah sesuai view */}
-          <section className="flex-1">
+          <section className="flex-1 min-w-0 animate-fade-in">
             {error ? (
-              <div className="mt-2 rounded-3xl bg-amber-50 p-6 text-amber-900 shadow-soft">
-                <p className="font-semibold">Gagal memuat dashboard kasir</p>
-                <p className="mt-2 text-sm">{error}</p>
+              <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-800">
+                <p className="text-sm font-medium">{error}</p>
               </div>
             ) : null}
 
             {view === 'dashboard' && (
               <>
-                <div className="grid gap-4 xl:grid-cols-4">
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   <StatusCard title="Pengunjung Hari Ini" value={stats.totalVisitorsToday.toString()} note="Ringkasan kasir" />
                   <StatusCard title="Gate Status" value={status.online ? 'Online' : 'Offline'} note={`Gate: ${status.connectedGateNames?.join(', ') || status.connectedGates?.join(', ') || status.currentGate}`} />
                   <StatusCard title="Members Aktif" value={stats.activeMembers.toString()} note="Data Firestore" />
@@ -541,45 +529,39 @@ export default function KasirPage() {
                 </div>
 
                 <div className="mt-6 grid gap-6 xl:grid-cols-3">
-                  <div className="rounded-3xl bg-white p-6 shadow-soft">
-                    <h2 className="text-lg font-semibold">Ringkasan Kasir</h2>
-                    <div className="mt-6 space-y-4 text-sm text-slate-600">
-                      <div className="flex items-center justify-between rounded-2xl bg-slate-50 p-4">
+                  <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-card">
+                    <h2 className="text-base font-semibold text-slate-900">Ringkasan Kasir</h2>
+                    <div className="mt-4 space-y-2 text-sm text-slate-500">
+                      <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3.5 py-2.5">
                         <span>Scan terbaru</span>
-                        <strong>{recentScans.length}</strong>
+                        <span className="font-semibold text-slate-700">{recentScans.length}</span>
                       </div>
-                      <div className="flex items-center justify-between rounded-2xl bg-slate-50 p-4">
+                      <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3.5 py-2.5">
                         <span>Jumlah anggota aktif</span>
-                        <strong>{stats.activeMembers}</strong>
+                        <span className="font-semibold text-slate-700">{stats.activeMembers}</span>
                       </div>
                     </div>
                   </div>
 
-                  <div className="rounded-3xl bg-white p-6 shadow-soft xl:col-span-2">
-                    <div className="mb-5 flex items-center justify-between">
-                      <div>
-                        <h2 className="text-lg font-semibold">Riwayat Scan</h2>
-                        <p className="text-sm text-slate-500">Scan terbaru untuk kasir</p>
-                      </div>
+                  <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-card xl:col-span-2">
+                    <div className="mb-4">
+                      <h2 className="text-base font-semibold text-slate-900">Riwayat Scan</h2>
+                      <p className="text-sm text-slate-400">Scan terbaru untuk kasir</p>
                     </div>
 
                     {loading ? (
-                      <div className="rounded-3xl border border-slate-200 p-6 text-slate-500">Memuat data...</div>
+                      <div className="rounded-xl border border-slate-100 p-6 text-sm text-slate-400 text-center">Memuat data...</div>
                     ) : recentScans.length === 0 ? (
-                      <div className="rounded-3xl border border-slate-200 p-6 text-slate-500">Belum ada scan terbaru.</div>
+                      <div className="rounded-xl border border-slate-100 p-6 text-sm text-slate-400 text-center">Belum ada scan terbaru.</div>
                     ) : (
-                      <div className="space-y-4">
+                      <div className="space-y-2 max-h-96 overflow-y-auto">
                         {recentScans.map((scan) => (
-                          <div key={scan.uid + scan.scannedAt} className="rounded-3xl border border-slate-200 p-4">
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                              <span className="font-semibold">{scan.ticketType}</span>
-                              <span className="text-sm text-slate-500">{scan.scannedDate ? `${scan.scannedDate} ` : ''}{scan.scannedAt}</span>
-                            </div>
-                            <div className="mt-2 flex flex-wrap gap-3 text-sm text-slate-600">
-                              <span>UID: {scan.uid}</span>
-                              <span>Gate: {scan.gate}</span>
-                              <span>Status: <strong>{scan.status}</strong></span>
-                            </div>
+                          <div key={scan.uid + scan.scannedAt} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3">
+                            <span className="font-medium text-sm text-slate-700">{scan.ticketType}</span>
+                            <span className="text-xs text-slate-400">{scan.scannedDate ? `${scan.scannedDate} ` : ''}{scan.scannedAt}</span>
+                            <span className="ml-auto text-xs text-slate-400">UID: {scan.uid}</span>
+                            <span className="text-xs text-slate-400">Gate: {scan.gate}</span>
+                            <span className="rounded-lg bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{scan.status}</span>
                           </div>
                         ))}
                       </div>
@@ -590,107 +572,97 @@ export default function KasirPage() {
             )}
 
             {view === 'transaksi' && (
-              <div className="space-y-6">
+              <div className="space-y-6 animate-fade-in">
                 {receipt ? (
-                  <div className="rounded-3xl bg-green-50 p-6 shadow-soft">
+                  <div className="rounded-2xl border border-emerald-100 bg-green-50 p-5 shadow-card">
                     <div className="mb-4 flex items-center justify-between">
-                      <h3 className="text-lg font-semibold text-green-900">Struk Pembayaran</h3>
+                      <h3 className="text-sm font-semibold text-green-900">Struk Pembayaran</h3>
                       <button
                         onClick={() => setReceipt(null)}
-                        className="rounded-2xl bg-green-100 px-3 py-1 text-sm text-green-900 hover:bg-green-200"
+                        className="rounded-lg bg-green-100 px-3 py-1 text-xs font-medium text-green-800 hover:bg-green-200 transition-colors"
                       >
                         Tutup
                       </button>
                     </div>
-                    <pre className="mb-4 overflow-auto rounded-2xl bg-white p-4 font-mono text-xs text-slate-900">
+                    <pre className="mb-4 overflow-auto rounded-xl bg-white p-4 font-mono text-xs text-slate-900">
                       {receipt}
                     </pre>
                     <button
                       onClick={handlePrintReceipt}
-                      className="w-full rounded-2xl bg-green-600 px-4 py-2 text-white hover:bg-green-700"
+                      className="w-full rounded-xl bg-green-600 px-4 py-2.5 text-sm font-medium text-white shadow-card transition-all hover:bg-green-700 active:scale-[0.97]"
                     >
                       Cetak Struk
                     </button>
                   </div>
                 ) : null}
 
-                <div className="rounded-3xl bg-white p-6 shadow-soft max-w-md">
-                  <h2 className="text-lg font-semibold mb-6">Buat Transaksi</h2>
+                <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-card max-w-md">
+                  <h2 className="text-base font-semibold text-slate-900 mb-5">Buat Transaksi</h2>
                   <form onSubmit={handleCreateTransaction} className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">UID Kartu</label>
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">UID Kartu</label>
                       <input
                         type="text"
                         value={cardUid}
                         onChange={(e) => setCardUid(e.target.value)}
                         placeholder="Scan atau masukkan UID"
-                        className="w-full rounded-2xl border border-slate-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                        className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
                         disabled={transactionLoading}
                       />
                     </div>
-
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">Jenis Tiket</label>
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Jenis Tiket</label>
                       <select
                         value={selectedTicketType}
                         onChange={(e) => setSelectedTicketType(e.target.value)}
-                        className="w-full rounded-2xl border border-slate-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                        className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 transition-colors focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
                         disabled={transactionLoading}
                       >
                         {(ticketTypes.length ? ticketTypes : DEFAULT_TICKET_TYPES).map((type) => (
-                          <option key={type} value={type}>
-                            {type}
-                          </option>
+                          <option key={type} value={type}>{type}</option>
                         ))}
                       </select>
                     </div>
-
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">Jumlah</label>
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Jumlah</label>
                       <input
                         type="number"
                         min={1}
                         value={quantity}
                         onChange={(e) => setQuantity(Number(e.target.value))}
-                        className="w-full rounded-2xl border border-slate-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                        className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 transition-colors focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
                         disabled={transactionLoading}
                       />
                     </div>
-
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">Harga / unit</label>
-                      <div className="rounded-2xl bg-slate-50 px-4 py-2 font-semibold text-lg text-sky-600">
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Harga / unit</label>
+                      <div className="mt-1.5 rounded-xl bg-sky-50 border border-sky-100 px-4 py-2.5 font-semibold text-base text-sky-700">
                         Rp {ticketPrices[selectedTicketType].toLocaleString('id-ID')}
                       </div>
                     </div>
-
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">Total</label>
-                      <div className="rounded-2xl bg-slate-50 px-4 py-2 font-semibold text-lg text-sky-600">
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total</label>
+                      <div className="mt-1.5 rounded-xl bg-emerald-50 border border-emerald-100 px-4 py-2.5 font-semibold text-base text-emerald-700">
                         Rp {(ticketPrices[selectedTicketType] * (quantity || 1)).toLocaleString('id-ID')}
                       </div>
                     </div>
-
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">Metode Pembayaran</label>
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Metode Pembayaran</label>
                       <select
                         value={selectedPaymentMethod}
                         onChange={(e) => setSelectedPaymentMethod(e.target.value)}
-                        className="w-full rounded-2xl border border-slate-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                        className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 transition-colors focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
                         disabled={transactionLoading}
                       >
                         {(paymentMethods.length ? paymentMethods : DEFAULT_PAYMENT_METHODS).map((method) => (
-                          <option key={method} value={method}>
-                            {method}
-                          </option>
+                          <option key={method} value={method}>{method}</option>
                         ))}
                       </select>
                     </div>
-
                     <button
                       type="submit"
                       disabled={transactionLoading}
-                      className="w-full rounded-2xl bg-sky-600 px-4 py-2 text-white hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-medium text-white shadow-card transition-all hover:bg-sky-700 hover:shadow-card-hover active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {transactionLoading ? 'Memproses...' : 'Proses Pembayaran'}
                     </button>
@@ -700,73 +672,69 @@ export default function KasirPage() {
             )}
 
             {view === 'ringkasan' && (
-              <div className="rounded-3xl bg-white p-6 shadow-soft max-w-lg">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-lg font-semibold">Ringkasan Kasir</h2>
+              <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-card max-w-lg">
+                <div className="flex items-center justify-between mb-5">
+                  <h2 className="text-base font-semibold text-slate-900">Ringkasan Kasir</h2>
                   <button
                     onClick={fetchDashboard}
                     disabled={loading}
-                    className="rounded-2xl bg-sky-600 px-4 py-2 text-sm text-white hover:bg-sky-700 disabled:opacity-50"
+                    className="rounded-xl bg-sky-600 px-4 py-2 text-xs font-medium text-white shadow-card transition-all hover:bg-sky-700 active:scale-[0.97] disabled:opacity-50"
                   >
                     {loading ? 'Memuat...' : 'Refresh'}
                   </button>
                 </div>
-                <div className="grid gap-4 sm:grid-cols-2 mb-6">
-                  <div className="rounded-2xl bg-sky-50 border border-sky-100 p-4">
-                    <p className="text-xs text-sky-600 uppercase font-bold tracking-wider">Transaksi Hari Ini</p>
-                    <p className="text-2xl font-bold text-sky-900">{todaySummary.transactionCount}</p>
+                <div className="grid gap-4 sm:grid-cols-2 mb-5">
+                  <div className="rounded-xl bg-sky-50 border border-sky-100 p-4">
+                    <p className="text-[10px] font-semibold text-sky-600 uppercase tracking-wider">Transaksi Hari Ini</p>
+                    <p className="mt-1 text-2xl font-bold text-sky-900">{todaySummary.transactionCount}</p>
                   </div>
-                  <div className="rounded-2xl bg-emerald-50 border border-emerald-100 p-4">
-                    <p className="text-xs text-emerald-600 uppercase font-bold tracking-wider">Pendapatan Hari Ini</p>
-                    <p className="text-2xl font-bold text-emerald-900">Rp {todaySummary.revenue.toLocaleString('id-ID')}</p>
+                  <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-4">
+                    <p className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wider">Pendapatan Hari Ini</p>
+                    <p className="mt-1 text-2xl font-bold text-emerald-900">Rp {todaySummary.revenue.toLocaleString('id-ID')}</p>
                   </div>
                 </div>
-                <div className="space-y-4 text-sm text-slate-600">
-                  <div className="flex items-center justify-between rounded-2xl bg-slate-50 p-4">
+                <div className="space-y-2 text-sm text-slate-500">
+                  <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3.5 py-2.5">
                     <span>Total Scan</span>
-                    <strong>{recentScans.length}</strong>
+                    <span className="font-semibold text-slate-700">{recentScans.length}</span>
                   </div>
-                  <div className="flex items-center justify-between rounded-2xl bg-slate-50 p-4">
+                  <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3.5 py-2.5">
                     <span>Anggota Aktif</span>
-                    <strong>{stats.activeMembers}</strong>
+                    <span className="font-semibold text-slate-700">{stats.activeMembers}</span>
                   </div>
                 </div>
               </div>
             )}
 
             {view === 'riwayat' && (
-              <div className="rounded-3xl bg-white p-6 shadow-soft">
+              <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-card">
                 <div className="mb-5 flex items-center justify-between">
                   <div>
-                    <h2 className="text-lg font-semibold">Riwayat Scan</h2>
-                    <p className="text-sm text-slate-500">Scan terbaru untuk kasir</p>
+                    <h2 className="text-base font-semibold text-slate-900">Riwayat Scan</h2>
+                    <p className="text-sm text-slate-400">Scan terbaru untuk kasir</p>
                   </div>
                   <button
                     onClick={fetchDashboard}
                     disabled={loading}
-                    className="rounded-2xl bg-sky-600 px-4 py-2 text-sm text-white hover:bg-sky-700 disabled:opacity-50"
+                    className="rounded-xl bg-sky-600 px-4 py-2 text-xs font-medium text-white shadow-card transition-all hover:bg-sky-700 active:scale-[0.97] disabled:opacity-50"
                   >
                     {loading ? 'Memuat...' : 'Refresh'}
                   </button>
                 </div>
 
                 {loading ? (
-                  <div className="rounded-3xl border border-slate-200 p-6 text-slate-500">Memuat data...</div>
+                  <div className="rounded-xl border border-slate-100 p-6 text-sm text-slate-400 text-center">Memuat data...</div>
                 ) : recentScans.length === 0 ? (
-                  <div className="rounded-3xl border border-slate-200 p-6 text-slate-500">Belum ada scan terbaru.</div>
+                  <div className="rounded-xl border border-slate-100 p-6 text-sm text-slate-400 text-center">Belum ada scan terbaru.</div>
                 ) : (
-                  <div className="space-y-4">
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
                     {recentScans.map((scan) => (
-                      <div key={scan.uid + scan.scannedAt} className="rounded-3xl border border-slate-200 p-4">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <span className="font-semibold">{scan.ticketType}</span>
-                          <span className="text-sm text-slate-500">{scan.scannedDate ? `${scan.scannedDate} ` : ''}{scan.scannedAt}</span>
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-3 text-sm text-slate-600">
-                          <span>UID: {scan.uid}</span>
-                          <span>Gate: {scan.gate}</span>
-                          <span>Status: <strong>{scan.status}</strong></span>
-                        </div>
+                      <div key={scan.uid + scan.scannedAt} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3">
+                        <span className="font-medium text-sm text-slate-700">{scan.ticketType}</span>
+                        <span className="text-xs text-slate-400">{scan.scannedDate ? `${scan.scannedDate} ` : ''}{scan.scannedAt}</span>
+                        <span className="ml-auto text-xs text-slate-400">UID: {scan.uid}</span>
+                        <span className="text-xs text-slate-400">Gate: {scan.gate}</span>
+                        <span className="rounded-lg bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{scan.status}</span>
                       </div>
                     ))}
                   </div>
@@ -775,16 +743,16 @@ export default function KasirPage() {
             )}
 
             {view === 'grafik' && (
-              <div className="rounded-3xl bg-white p-6 shadow-soft">
+              <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-card">
                 <div className="mb-5 flex items-center justify-between">
                   <div>
-                    <h2 className="text-lg font-semibold">Grafik Tren</h2>
-                    <p className="text-sm text-slate-500">7 jam dan 5 hari terakhir</p>
+                    <h2 className="text-base font-semibold text-slate-900">Grafik Tren</h2>
+                    <p className="text-sm text-slate-400">7 jam dan 5 hari terakhir</p>
                   </div>
                   <button
                     onClick={fetchDashboard}
                     disabled={loading}
-                    className="rounded-2xl bg-sky-600 px-4 py-2 text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-xl bg-sky-600 px-4 py-2 text-xs font-medium text-white shadow-card transition-all hover:bg-sky-700 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     Refresh
                   </button>
@@ -792,17 +760,17 @@ export default function KasirPage() {
 
                 <div className="grid gap-8 md:grid-cols-2">
                   <div>
-                    <p className="mb-4 text-sm font-semibold text-slate-600 uppercase tracking-wider">Hourly Trend</p>
-                    <div className="space-y-3">
+                    <p className="mb-4 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Hourly Trend</p>
+                    <div className="space-y-2">
                       {stats.hourlyTrend.map((value, index) => {
                         const label = index === 6 ? 'Now' : `${6 - index}h`
                         const barWidth = chartMaxValue > 0 ? (value / chartMaxValue) * 100 : 0
                         return (
                           <div key={index} className="flex items-center gap-3">
-                            <span className="w-8 text-right text-xs font-medium text-slate-500 shrink-0">{label}</span>
-                            <div className="flex-1 h-7 rounded-xl bg-slate-100 overflow-hidden">
+                            <span className="w-8 text-right text-xs font-medium text-slate-400 shrink-0">{label}</span>
+                            <div className="flex-1 h-6 rounded-lg bg-slate-100 overflow-hidden">
                               <div
-                                className="h-full rounded-xl bg-gradient-to-r from-sky-500 to-sky-400 transition-all duration-500 flex items-center justify-end px-2"
+                                className="h-full rounded-lg bg-gradient-to-r from-sky-500 to-sky-400 transition-all duration-500 flex items-center justify-end px-2"
                                 style={{ width: `${Math.max(barWidth, value > 0 ? 8 : 0)}%` }}
                               >
                                 {value > 0 && <span className="text-[10px] font-bold text-white drop-shadow-sm">{value}</span>}
@@ -815,17 +783,17 @@ export default function KasirPage() {
                   </div>
 
                   <div>
-                    <p className="mb-4 text-sm font-semibold text-slate-600 uppercase tracking-wider">Daily Trend</p>
-                    <div className="space-y-3">
+                    <p className="mb-4 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Daily Trend</p>
+                    <div className="space-y-2">
                       {stats.dailyTrend.map((value, index) => {
                         const label = `${4 - index}d`
                         const barWidth = chartMaxValue > 0 ? (value / chartMaxValue) * 100 : 0
                         return (
                           <div key={index} className="flex items-center gap-3">
-                            <span className="w-8 text-right text-xs font-medium text-slate-500 shrink-0">{label}</span>
-                            <div className="flex-1 h-7 rounded-xl bg-slate-100 overflow-hidden">
+                            <span className="w-8 text-right text-xs font-medium text-slate-400 shrink-0">{label}</span>
+                            <div className="flex-1 h-6 rounded-lg bg-slate-100 overflow-hidden">
                               <div
-                                className="h-full rounded-xl bg-gradient-to-r from-indigo-500 to-indigo-400 transition-all duration-500 flex items-center justify-end px-2"
+                                className="h-full rounded-lg bg-gradient-to-r from-indigo-500 to-indigo-400 transition-all duration-500 flex items-center justify-end px-2"
                                 style={{ width: `${Math.max(barWidth, value > 0 ? 8 : 0)}%` }}
                               >
                                 {value > 0 && <span className="text-[10px] font-bold text-white drop-shadow-sm">{value}</span>}
@@ -841,28 +809,28 @@ export default function KasirPage() {
             )}
 
             {view === 'kontrol-gate' && (
-              <div className="rounded-3xl bg-white p-6 shadow-soft">
-                <div className="mb-6">
-                  <h2 className="text-xl font-semibold">Kontrol Gate</h2>
-                  <p className="text-sm text-slate-500">Buka gate dan catat scan pengunjung</p>
+              <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-card">
+                <div className="mb-5">
+                  <h2 className="text-base font-semibold text-slate-900">Kontrol Gate</h2>
+                  <p className="text-sm text-slate-400">Buka gate dan catat scan pengunjung</p>
 
                   <div className="mt-4 flex flex-wrap gap-3 items-end">
                     <div className="flex-1 min-w-[200px]">
-                      <label className="block text-xs font-medium text-slate-600 mb-1">UID Kartu (opsional)</label>
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">UID Kartu (opsional)</label>
                       <input
                         type="text"
                         value={gateUid}
                         onChange={(e) => setGateUid(e.target.value)}
                         placeholder="Scan atau ketik UID"
-                        className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                       />
                     </div>
                     <div className="w-40">
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Jenis Tiket</label>
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Jenis Tiket</label>
                       <select
                         value={gateTicketType}
                         onChange={(e) => setGateTicketType(e.target.value)}
-                        className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 transition-colors focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                       >
                         {['Manual', 'Tiket Harian', 'Member', 'VIP', 'Paket Keluarga', 'Tiket Anak', 'Tiket Dewasa'].map((t) => (
                           <option key={t} value={t}>{t}</option>
@@ -882,16 +850,16 @@ export default function KasirPage() {
                           key={gateId}
                           onClick={() => handleOpenGate(gateId)}
                           disabled={!isOnline || isLoading}
-                          className={`rounded-xl px-5 py-3 font-medium transition-all ${
+                          className={`rounded-xl px-5 py-3 text-sm font-medium transition-all active:scale-[0.97] ${
                             !isOnline
-                              ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                              ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
                               : isLoading
                               ? 'bg-emerald-500 text-white cursor-wait'
                               : fb?.ok
                               ? 'bg-green-600 text-white'
                               : fb
                               ? 'bg-red-500 text-white'
-                              : 'bg-emerald-600 text-white shadow-soft hover:bg-emerald-700 active:scale-95'
+                              : 'bg-emerald-600 text-white shadow-card hover:bg-emerald-700 hover:shadow-card-hover'
                           }`}
                         >
                           <div className="flex items-center gap-2">
@@ -911,6 +879,6 @@ export default function KasirPage() {
           </section>
         </div>
       </div>
-    </main>
+    </div>
   )
 }

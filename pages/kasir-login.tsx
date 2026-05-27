@@ -45,53 +45,54 @@ export default function KasirLoginPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-900 to-sky-700 text-white">
-      <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-12">
-        <div className="rounded-3xl bg-white p-8 shadow-soft text-slate-900">
-          <h1 className="mb-2 text-3xl font-semibold">Login Kasir</h1>
-          <p className="mb-4 text-slate-600">Masuk sebagai kasir untuk membuka dashboard kasir.</p>
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-800 via-slate-900 to-sky-900 px-4">
+      <div className="w-full max-w-sm animate-slide-up">
+        <div className="rounded-2xl border border-white/10 bg-white/95 p-7 shadow-modal backdrop-blur-sm">
+          <h1 className="text-2xl font-bold text-slate-900">Login Kasir</h1>
+          <p className="mt-1.5 text-sm text-slate-500">Masuk sebagai kasir untuk membuka dashboard kasir.</p>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <label className="block">
-              <span className="text-sm font-medium">Email</span>
+          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Email</label>
               <input
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 placeholder="kasir@waterpark.id"
-                className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 focus:border-sky-500 focus:outline-none"
+                className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                 required
               />
-            </label>
-
-            <label className="block">
-              <span className="text-sm font-medium">Password</span>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Password</label>
               <input
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder="••••••••"
-                className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 focus:border-sky-500 focus:outline-none"
+                className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                 required
               />
-            </label>
+            </div>
 
-            {error ? <p className="text-sm text-red-600">{error}</p> : null}
+            {error ? (
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-600">{error}</p>
+            ) : null}
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-2xl bg-sky-600 px-4 py-3 text-white shadow-soft hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white shadow-card transition-all hover:bg-emerald-700 hover:shadow-card-hover active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? 'Memproses...' : 'Login Kasir'}
             </button>
           </form>
 
-          <div className="mt-6 text-sm text-slate-500">
-            <Link href="/" className="text-sky-600 hover:underline">Kembali ke Beranda</Link>
+          <div className="mt-6 text-xs">
+            <Link href="/" className="font-medium text-emerald-600 hover:text-emerald-700">&larr; Kembali ke Beranda</Link>
           </div>
         </div>
       </div>
-    </main>
+    </div>
   )
 }

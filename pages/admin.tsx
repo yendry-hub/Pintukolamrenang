@@ -35,6 +35,21 @@ const INITIAL_TICKET_PRICES: Record<string, number> = {
   'Tiket Dewasa': 50000
 }
 
+function NavButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full text-left rounded-lg px-3.5 py-2 text-sm font-medium transition-all ${
+        active
+          ? 'bg-sky-50 text-sky-700'
+          : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+      }`}
+    >
+      {label}
+    </button>
+  )
+}
+
 export default function AdminPage() {
   const router = useRouter()
   const [status, setStatus] = useState<GateStatus>({ online: false, lastSeen: null, currentGate: '-' })
@@ -415,114 +430,64 @@ export default function AdminPage() {
 
   if (!authInitialized) {
     return (
-      <main className="min-h-screen bg-slate-100 text-slate-900">
-        <div className="mx-auto flex min-h-screen max-w-7xl items-center justify-center px-4 py-8">
-          <div className="rounded-3xl bg-white p-8 shadow-soft text-slate-900">Memeriksa autentikasi...</div>
-              </div>
-    </main>
-  )
-}
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-50 to-white text-slate-900">
+        <div className="rounded-2xl border border-slate-100 bg-white p-8 shadow-card text-slate-900">Memeriksa autentikasi...</div>
+      </div>
+    )
+  }
 
   const chartMaxValue = Math.max(...stats.hourlyTrend, ...stats.dailyTrend, 1)
 
   return (
-    <main className="min-h-screen bg-slate-100 text-slate-900">
-      <div className="mx-auto max-w-7xl px-4 py-8">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
+      <div className="mx-auto max-w-7xl px-6 py-8">
         <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <span className="text-sm uppercase tracking-[0.25em] text-sky-700">Admin Dashboard</span>
-            <h1 className="mt-2 text-3xl font-semibold">Monitoring Gate & Ticketing</h1>
-            {userEmail ? <p className="mt-2 text-sm text-slate-500">Masuk sebagai {userEmail}</p> : null}
-            <p className="mt-2 text-sm text-slate-500">{offlineMode ? 'Mode offline aktif' : 'Online'}</p>
+            <span className="text-xs font-semibold uppercase tracking-[0.25em] text-sky-600">Admin Dashboard</span>
+            <h1 className="mt-1.5 text-2xl font-bold text-slate-900">Monitoring Gate &amp; Ticketing</h1>
+            {userEmail ? <p className="mt-1.5 text-sm text-slate-400">Masuk sebagai {userEmail}</p> : null}
+            <p className="mt-1 text-xs text-slate-400">{offlineMode ? 'Mode offline aktif' : 'Online'}</p>
           </div>
-          <div className="flex flex-wrap gap-3">
-            <button onClick={fetchConfig} className="rounded-2xl bg-sky-100 px-4 py-2 text-sky-700 shadow-soft hover:bg-sky-200" title="Refresh data dari server">
+          <div className="flex flex-wrap gap-2">
+            <button onClick={fetchConfig} className="rounded-xl bg-white border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 shadow-card transition-all hover:border-slate-300 hover:shadow-card-hover active:scale-[0.97]" title="Refresh data dari server">
               Refresh Data
             </button>
-            <button onClick={handleLogout} className="rounded-2xl bg-white px-4 py-2 text-slate-700 shadow-soft hover:bg-slate-50">
+            <button onClick={handleLogout} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-card transition-all hover:border-slate-300 hover:shadow-card-hover active:scale-[0.97]">
               Logout
             </button>
-            <Link href="/" className="rounded-2xl bg-slate-900 px-4 py-2 text-white shadow-soft hover:bg-slate-800">
-              Kembali ke Beranda
+            <Link href="/" className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-card transition-all hover:bg-slate-800 hover:shadow-card-hover active:scale-[0.97]">
+              Beranda
             </Link>
           </div>
         </div>
 
         <div className="mt-6 flex flex-col gap-6 md:flex-row">
           {/* Sidebar kiri */}
-          <aside className="md:w-64">
-            <div className="rounded-3xl bg-white p-4 shadow-soft">
-              <nav className="space-y-2">
-                <button
-                  onClick={() => setView('dashboard')}
-                  className={`w-full text-left rounded-xl px-4 py-2 hover:bg-slate-50 ${view === 'dashboard' ? 'bg-slate-100 font-semibold' : ''}`}
-                >
-                  Dashboard
-                </button>
-                <button
-                  onClick={() => setView('kasir')}
-                  className={`w-full text-left rounded-xl px-4 py-2 hover:bg-slate-50 ${view === 'kasir' ? 'bg-slate-100 font-semibold' : ''}`}
-                >
-                  Tambah Kasir
-                </button>
-                <button
-                  onClick={() => setView('kartu')}
-                  className={`w-full text-left rounded-xl px-4 py-2 hover:bg-slate-50 ${view === 'kartu' ? 'bg-slate-100 font-semibold' : ''}`}
-                >
-                  Management Kartu
-                </button>
-                <button
-                  onClick={() => setView('grafik')}
-                  className={`w-full text-left rounded-xl px-4 py-2 hover:bg-slate-50 ${view === 'grafik' ? 'bg-slate-100 font-semibold' : ''}`}
-                >
-                  Grafik Tren
-                </button>
-                <button
-                  onClick={() => setView('transaksi')}
-                  className={`w-full text-left rounded-xl px-4 py-2 hover:bg-slate-50 ${view === 'transaksi' ? 'bg-slate-100 font-semibold' : ''}`}
-                >
-                  Riwayat Transaksi
-                </button>
-                <button
-                  onClick={() => setView('riwayat')}
-                  className={`w-full text-left rounded-xl px-4 py-2 hover:bg-slate-50 ${view === 'riwayat' ? 'bg-slate-100 font-semibold' : ''}`}
-                >
-                  Riwayat Scan
-                </button>
-                <button
-                  onClick={() => setView('harga')}
-                  className={`w-full text-left rounded-xl px-4 py-2 hover:bg-slate-50 ${view === 'harga' ? 'bg-slate-100 font-semibold' : ''}`}
-                >
-                  Pengaturan Harga
-                </button>
-                <button
-                  onClick={() => setView('printout')}
-                  className={`w-full text-left rounded-xl px-4 py-2 hover:bg-slate-50 ${view === 'printout' ? 'bg-slate-100 font-semibold' : ''}`}
-                >
-                  Custom Print Out
-                </button>
-                <button
-                  onClick={() => setView('laporan')}
-                  className={`w-full text-left rounded-xl px-4 py-2 hover:bg-slate-50 ${view === 'laporan' ? 'bg-slate-100 font-semibold' : ''}`}
-                >
-                  Laporan Penjualan
-                </button>
-              </nav>
-            </div>
+          <aside className="md:w-56 shrink-0">
+            <nav className="rounded-2xl border border-slate-100 bg-white p-2 shadow-card">
+              <NavButton label="Dashboard" active={view === 'dashboard'} onClick={() => setView('dashboard')} />
+              <NavButton label="Tambah Kasir" active={view === 'kasir'} onClick={() => setView('kasir')} />
+              <NavButton label="Management Kartu" active={view === 'kartu'} onClick={() => setView('kartu')} />
+              <NavButton label="Grafik Tren" active={view === 'grafik'} onClick={() => setView('grafik')} />
+              <NavButton label="Riwayat Transaksi" active={view === 'transaksi'} onClick={() => setView('transaksi')} />
+              <NavButton label="Riwayat Scan" active={view === 'riwayat'} onClick={() => setView('riwayat')} />
+              <NavButton label="Pengaturan Harga" active={view === 'harga'} onClick={() => setView('harga')} />
+              <NavButton label="Custom Print Out" active={view === 'printout'} onClick={() => setView('printout')} />
+              <NavButton label="Laporan Penjualan" active={view === 'laporan'} onClick={() => setView('laporan')} />
+            </nav>
           </aside>
 
           {/* Konten utama berubah sesuai view */}
-          <section className="flex-1">
+          <section className="flex-1 min-w-0 animate-fade-in">
             {error ? (
-              <div className="mb-6 rounded-3xl bg-amber-50 p-6 text-amber-900 shadow-soft">
-                <p className="font-semibold">Gagal memuat dashboard</p>
-                <p className="mt-2 text-sm">{error}</p>
+              <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-800">
+                <p className="text-sm font-medium">{error}</p>
               </div>
             ) : null}
 
             {view === 'dashboard' && (
               <>
-                <div className="grid gap-4 xl:grid-cols-4">
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   <StatusCard title="Pengunjung Hari Ini" value={stats.totalVisitorsToday.toString()} note="Statistik realtime" />
                   <StatusCard title="Gate Status" value={status.online ? 'Online' : 'Offline'} note={`Gate: ${status.connectedGateNames?.join(', ') || status.connectedGates?.join(', ') || status.currentGate}`} />
                   <StatusCard title="Members Aktif" value={stats.activeMembers.toString()} note="Data Firestore" />
@@ -530,55 +495,49 @@ export default function AdminPage() {
                 </div>
 
                 <div className="mt-6 grid gap-6 xl:grid-cols-3">
-                  <div className="rounded-3xl bg-white p-6 shadow-soft">
-                    <h2 className="text-lg font-semibold">Ringkasan</h2>
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2 mb-6">
-                      <div className="rounded-2xl bg-sky-50 border border-sky-100 p-3">
-                        <p className="text-xs text-sky-600 uppercase font-bold tracking-wider">Transaksi Hari Ini</p>
-                        <p className="text-xl font-bold text-sky-900">{todaySummary.transactionCount}</p>
+                  <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-card">
+                    <h2 className="text-base font-semibold text-slate-900">Ringkasan</h2>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 mb-5">
+                      <div className="rounded-xl bg-sky-50 border border-sky-100 p-3.5">
+                        <p className="text-[10px] font-semibold text-sky-600 uppercase tracking-wider">Transaksi Hari Ini</p>
+                        <p className="mt-1 text-xl font-bold text-sky-900">{todaySummary.transactionCount}</p>
                       </div>
-                      <div className="rounded-2xl bg-emerald-50 border border-emerald-100 p-3">
-                        <p className="text-xs text-emerald-600 uppercase font-bold tracking-wider">Pendapatan Hari Ini</p>
-                        <p className="text-xl font-bold text-emerald-900">Rp {todaySummary.revenue.toLocaleString('id-ID')}</p>
+                      <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-3.5">
+                        <p className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wider">Pendapatan Hari Ini</p>
+                        <p className="mt-1 text-xl font-bold text-emerald-900">Rp {todaySummary.revenue.toLocaleString('id-ID')}</p>
                       </div>
                     </div>
-                    <div className="space-y-3 text-sm text-slate-600">
-                      <div className="flex items-center justify-between rounded-2xl bg-slate-50 p-3">
+                    <div className="space-y-2 text-sm text-slate-500">
+                      <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3.5 py-2.5">
                         <span>Total Scan</span>
-                        <strong>{recentScans.length}</strong>
+                        <span className="font-semibold text-slate-700">{recentScans.length}</span>
                       </div>
-                      <div className="flex items-center justify-between rounded-2xl bg-slate-50 p-3">
+                      <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3.5 py-2.5">
                         <span>Anggota Aktif</span>
-                        <strong>{stats.activeMembers}</strong>
+                        <span className="font-semibold text-slate-700">{stats.activeMembers}</span>
                       </div>
                     </div>
                   </div>
 
-                  <div className="rounded-3xl bg-white p-6 shadow-soft xl:col-span-2">
-                    <div className="mb-5 flex items-center justify-between">
-                      <div>
-                        <h2 className="text-lg font-semibold">Scan Terbaru</h2>
-                        <p className="text-sm text-slate-500">Data langsung dari Firestore</p>
-                      </div>
+                  <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-card xl:col-span-2">
+                    <div className="mb-4">
+                      <h2 className="text-base font-semibold text-slate-900">Scan Terbaru</h2>
+                      <p className="text-sm text-slate-400">Data langsung dari Firestore</p>
                     </div>
 
                     {loading ? (
-                      <div className="rounded-3xl border border-slate-200 p-6 text-slate-500">Memuat data...</div>
+                      <div className="rounded-xl border border-slate-100 p-6 text-sm text-slate-400 text-center">Memuat data...</div>
                     ) : recentScans.length === 0 ? (
-                      <div className="rounded-3xl border border-slate-200 p-6 text-slate-500">Belum ada scan terbaru.</div>
+                      <div className="rounded-xl border border-slate-100 p-6 text-sm text-slate-400 text-center">Belum ada scan terbaru.</div>
                     ) : (
-                      <div className="space-y-4 max-h-96 overflow-y-auto">
+                      <div className="space-y-2 max-h-96 overflow-y-auto">
                         {recentScans.slice(0, 5).map((scan) => (
-                          <div key={scan.uid + scan.scannedAt} className="rounded-3xl border border-slate-200 p-4">
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                              <span className="font-semibold">{scan.ticketType}</span>
-                              <span className="text-sm text-slate-500">{scan.scannedDate ? `${scan.scannedDate} ` : ''}{scan.scannedAt}</span>
-                            </div>
-                            <div className="mt-2 flex flex-wrap gap-3 text-sm text-slate-600">
-                              <span>UID: {scan.uid}</span>
-                              <span>Gate: {scan.gate}</span>
-                              <span>Status: <strong>{scan.status}</strong></span>
-                            </div>
+                          <div key={scan.uid + scan.scannedAt} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3">
+                            <span className="font-medium text-sm text-slate-700">{scan.ticketType}</span>
+                            <span className="text-xs text-slate-400">{scan.scannedDate ? `${scan.scannedDate} ` : ''}{scan.scannedAt}</span>
+                            <span className="ml-auto text-xs text-slate-400">UID: {scan.uid}</span>
+                            <span className="text-xs text-slate-400">Gate: {scan.gate}</span>
+                            <span className="rounded-lg bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">Status: {scan.status}</span>
                           </div>
                         ))}
                       </div>
@@ -589,9 +548,9 @@ export default function AdminPage() {
             )}
 
             {view === 'kasir' && (
-              <div className="rounded-3xl bg-white p-6 shadow-soft max-w-md">
-                <h2 className="text-lg font-semibold">Tambah User Kasir</h2>
-                <p className="mt-2 text-sm text-slate-500">Buat akun kasir baru dengan email dan password.</p>
+              <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-card max-w-md">
+                <h2 className="text-base font-semibold text-slate-900">Tambah User Kasir</h2>
+                <p className="mt-1 text-sm text-slate-400">Buat akun kasir baru dengan email dan password.</p>
                 <form
                   onSubmit={async (event) => {
                     event.preventDefault()
@@ -626,46 +585,46 @@ export default function AdminPage() {
                       setCreateError(err?.message || 'Gagal membuat kasir')
                     }
                   }}
-                  className="mt-6 space-y-4"
+                  className="mt-5 space-y-4"
                 >
-                  <label className="block">
-                    <span className="text-sm font-medium text-slate-700">Nama Kasir</span>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Nama Kasir</label>
                     <input
                       type="text"
                       value={newCashierName}
                       onChange={(event) => setNewCashierName(event.target.value)}
-                      className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 focus:border-sky-500 focus:outline-none"
+                      className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
                       placeholder="Nama Kasir"
                       required
                     />
-                  </label>
-                  <label className="block">
-                    <span className="text-sm font-medium text-slate-700">Email Kasir</span>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Email Kasir</label>
                     <input
                       type="email"
                       value={newCashierEmail}
                       onChange={(event) => setNewCashierEmail(event.target.value)}
-                      className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 focus:border-sky-500 focus:outline-none"
+                      className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
                       placeholder="kasir@waterpark.id"
                       required
                     />
-                  </label>
-                  <label className="block">
-                    <span className="text-sm font-medium text-slate-700">Password</span>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Password</label>
                     <input
                       type="password"
                       value={newCashierPassword}
                       onChange={(event) => setNewCashierPassword(event.target.value)}
-                      className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 focus:border-sky-500 focus:outline-none"
+                      className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
                       placeholder="••••••••"
                       required
                     />
-                  </label>
-                  {createError ? <p className="text-sm text-red-600">{createError}</p> : null}
-                  {createMessage ? <p className="text-sm text-green-600">{createMessage}</p> : null}
+                  </div>
+                  {createError ? <p className="rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-600">{createError}</p> : null}
+                  {createMessage ? <p className="rounded-lg bg-green-50 px-3 py-2 text-xs font-medium text-green-600">{createMessage}</p> : null}
                   <button
                     type="submit"
-                    className="w-full rounded-2xl bg-sky-600 px-4 py-3 text-white shadow-soft hover:bg-sky-700"
+                    className="w-full rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-medium text-white shadow-card transition-all hover:bg-sky-700 hover:shadow-card-hover active:scale-[0.97]"
                   >
                     Buat Kasir
                   </button>
@@ -676,16 +635,16 @@ export default function AdminPage() {
             {view === 'kartu' && <CardManagement ticketTypes={ticketTypes} />}
 
             {view === 'grafik' && (
-              <div className="rounded-3xl bg-white p-6 shadow-soft">
+              <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-card">
                 <div className="mb-5 flex items-center justify-between">
                   <div>
-                    <h2 className="text-lg font-semibold">Grafik Tren</h2>
-                    <p className="text-sm text-slate-500">7 jam dan 5 hari terakhir</p>
+                    <h2 className="text-base font-semibold text-slate-900">Grafik Tren</h2>
+                    <p className="text-sm text-slate-400">7 jam dan 5 hari terakhir</p>
                   </div>
                   <button
                     onClick={fetchDashboard}
                     disabled={loading}
-                    className="rounded-2xl bg-sky-600 px-4 py-2 text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-medium text-white shadow-card transition-all hover:bg-sky-700 hover:shadow-card-hover active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     Refresh
                   </button>
@@ -693,17 +652,17 @@ export default function AdminPage() {
 
                 <div className="grid gap-8 md:grid-cols-2">
                   <div>
-                    <p className="mb-4 text-sm font-semibold text-slate-600 uppercase tracking-wider">Hourly Trend</p>
-                    <div className="space-y-3">
+                    <p className="mb-4 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Hourly Trend</p>
+                    <div className="space-y-2">
                       {stats.hourlyTrend.map((value, index) => {
                         const label = index === 6 ? 'Now' : `${6 - index}h`
                         const barWidth = chartMaxValue > 0 ? (value / chartMaxValue) * 100 : 0
                         return (
                           <div key={index} className="flex items-center gap-3">
-                            <span className="w-8 text-right text-xs font-medium text-slate-500 shrink-0">{label}</span>
-                            <div className="flex-1 h-7 rounded-xl bg-slate-100 overflow-hidden">
+                            <span className="w-8 text-right text-xs font-medium text-slate-400 shrink-0">{label}</span>
+                            <div className="flex-1 h-6 rounded-lg bg-slate-100 overflow-hidden">
                               <div
-                                className="h-full rounded-xl bg-gradient-to-r from-sky-500 to-sky-400 transition-all duration-500 flex items-center justify-end px-2"
+                                className="h-full rounded-lg bg-gradient-to-r from-sky-500 to-sky-400 transition-all duration-500 flex items-center justify-end px-2"
                                 style={{ width: `${Math.max(barWidth, value > 0 ? 8 : 0)}%` }}
                               >
                                 {value > 0 && <span className="text-[10px] font-bold text-white drop-shadow-sm">{value}</span>}
@@ -716,17 +675,17 @@ export default function AdminPage() {
                   </div>
 
                   <div>
-                    <p className="mb-4 text-sm font-semibold text-slate-600 uppercase tracking-wider">Daily Trend</p>
-                    <div className="space-y-3">
+                    <p className="mb-4 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Daily Trend</p>
+                    <div className="space-y-2">
                       {stats.dailyTrend.map((value, index) => {
                         const label = `${4 - index}d`
                         const barWidth = chartMaxValue > 0 ? (value / chartMaxValue) * 100 : 0
                         return (
                           <div key={index} className="flex items-center gap-3">
-                            <span className="w-8 text-right text-xs font-medium text-slate-500 shrink-0">{label}</span>
-                            <div className="flex-1 h-7 rounded-xl bg-slate-100 overflow-hidden">
+                            <span className="w-8 text-right text-xs font-medium text-slate-400 shrink-0">{label}</span>
+                            <div className="flex-1 h-6 rounded-lg bg-slate-100 overflow-hidden">
                               <div
-                                className="h-full rounded-xl bg-gradient-to-r from-indigo-500 to-indigo-400 transition-all duration-500 flex items-center justify-end px-2"
+                                className="h-full rounded-lg bg-gradient-to-r from-indigo-500 to-indigo-400 transition-all duration-500 flex items-center justify-end px-2"
                                 style={{ width: `${Math.max(barWidth, value > 0 ? 8 : 0)}%` }}
                               >
                                 {value > 0 && <span className="text-[10px] font-bold text-white drop-shadow-sm">{value}</span>}
@@ -742,38 +701,34 @@ export default function AdminPage() {
             )}
 
             {view === 'riwayat' && (
-              <div className="rounded-3xl bg-white p-6 shadow-soft">
+              <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-card">
                 <div className="mb-5 flex items-center justify-between">
                   <div>
-                    <h2 className="text-lg font-semibold">Riwayat Scan Kartu</h2>
-                    <p className="text-sm text-slate-500">Data langsung dari Firestore</p>
+                    <h2 className="text-base font-semibold text-slate-900">Riwayat Scan Kartu</h2>
+                    <p className="text-sm text-slate-400">Data langsung dari Firestore</p>
                   </div>
                   <button
                     onClick={fetchDashboard}
                     disabled={loading}
-                    className="rounded-2xl bg-sky-600 px-4 py-2 text-sm text-white hover:bg-sky-700 disabled:opacity-50"
+                    className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-medium text-white shadow-card transition-all hover:bg-sky-700 active:scale-[0.97] disabled:opacity-50"
                   >
                     {loading ? 'Memuat...' : 'Refresh'}
                   </button>
                 </div>
 
                 {loading ? (
-                  <div className="rounded-3xl border border-slate-200 p-6 text-slate-500">Memuat data...</div>
+                  <div className="rounded-xl border border-slate-100 p-6 text-sm text-slate-400 text-center">Memuat data...</div>
                 ) : recentScans.length === 0 ? (
-                  <div className="rounded-3xl border border-slate-200 p-6 text-slate-500">Belum ada scan terbaru.</div>
+                  <div className="rounded-xl border border-slate-100 p-6 text-sm text-slate-400 text-center">Belum ada scan terbaru.</div>
                 ) : (
-                  <div className="space-y-4 max-h-96 overflow-y-auto">
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
                     {recentScans.map((scan) => (
-                      <div key={scan.uid + scan.scannedAt} className="rounded-3xl border border-slate-200 p-4">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <span className="font-semibold">{scan.ticketType}</span>
-                          <span className="text-sm text-slate-500">{scan.scannedDate ? `${scan.scannedDate} ` : ''}{scan.scannedAt}</span>
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-3 text-sm text-slate-600">
-                          <span>UID: {scan.uid}</span>
-                          <span>Gate: {scan.gate}</span>
-                          <span>Status: <strong>{scan.status}</strong></span>
-                        </div>
+                      <div key={scan.uid + scan.scannedAt} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3">
+                        <span className="font-medium text-sm text-slate-700">{scan.ticketType}</span>
+                        <span className="text-xs text-slate-400">{scan.scannedDate ? `${scan.scannedDate} ` : ''}{scan.scannedAt}</span>
+                        <span className="ml-auto text-xs text-slate-400">UID: {scan.uid}</span>
+                        <span className="text-xs text-slate-400">Gate: {scan.gate}</span>
+                        <span className="rounded-lg bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">Status: {scan.status}</span>
                       </div>
                     ))}
                   </div>
@@ -782,14 +737,14 @@ export default function AdminPage() {
             )}
 
             {view === 'harga' && (
-              <div className="rounded-3xl bg-white p-6 shadow-soft max-w-2xl">
-                <h2 className="text-lg font-semibold mb-6">Pengaturan Harga Tiket</h2>
-                <div className="space-y-4">
+              <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-card max-w-2xl">
+                <h2 className="text-base font-semibold text-slate-900 mb-5">Pengaturan Harga Tiket</h2>
+                <div className="space-y-3">
                   {(ticketTypes.length ? ticketTypes : DEFAULT_TICKET_TYPES).map((ticketType) => (
-                    <div key={ticketType} className="flex items-center gap-4">
-                      <label className="flex-1 text-sm font-medium text-slate-700 min-w-48">{ticketType}</label>
-                      <div className="flex items-center gap-2 flex-1">
-                        <span className="text-slate-600">Rp</span>
+                    <div key={ticketType} className="flex items-center gap-4 rounded-xl bg-slate-50/50 border border-slate-100 px-4 py-3">
+                      <label className="flex-1 text-sm font-medium text-slate-600 min-w-40">{ticketType}</label>
+                      <div className="flex items-center gap-2 w-48">
+                        <span className="text-sm text-slate-400">Rp</span>
                         <input
                           type="number"
                           min={0}
@@ -798,28 +753,30 @@ export default function AdminPage() {
                             ...ticketPrices,
                             [ticketType]: Number(e.target.value)
                           })}
-                          className="flex-1 rounded-2xl border border-slate-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                          className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 transition-colors focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
                         />
                       </div>
                     </div>
                   ))}
                 </div>
                 {priceMessage ? (
-                  <p className={`mt-4 text-sm ${priceMessage.includes('Error') ? 'text-red-600' : 'text-green-600'}`}>
+                  <p className={`mt-4 rounded-lg px-3 py-2 text-xs font-medium ${
+                    priceMessage.includes('Error') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'
+                  }`}>
                     {priceMessage}
                   </p>
                 ) : null}
-                <div className="mt-6 flex gap-3">
+                <div className="mt-5 flex gap-3">
                   <button
                     onClick={handleSaveTicketPrices}
                     disabled={priceSaving}
-                    className="flex-1 rounded-2xl bg-sky-600 px-4 py-3 text-white hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-medium text-white shadow-card transition-all hover:bg-sky-700 hover:shadow-card-hover active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {priceSaving ? 'Menyimpan...' : 'Simpan Pengaturan Harga'}
                   </button>
                   <button
                     onClick={fetchConfig}
-                    className="rounded-2xl bg-slate-200 px-4 py-3 text-slate-700 hover:bg-slate-300"
+                    className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 shadow-card transition-all hover:border-slate-300 hover:shadow-card-hover active:scale-[0.97]"
                     title="Muat ulang harga dari database"
                   >
                     Muat Ulang
@@ -829,20 +786,20 @@ export default function AdminPage() {
             )}
 
             {view === 'laporan' && (
-              <div className="space-y-6">
-                <div className="rounded-3xl bg-white p-6 shadow-soft">
+              <div className="space-y-6 animate-fade-in">
+                <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-card">
                   <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <h2 className="text-lg font-semibold">Laporan Penjualan Tiket</h2>
-                      <p className="text-sm text-slate-500">Ringkasan pendapatan dan volume tiket</p>
+                      <h2 className="text-base font-semibold text-slate-900">Laporan Penjualan Tiket</h2>
+                      <p className="text-sm text-slate-400">Ringkasan pendapatan dan volume tiket</p>
                     </div>
-                    <div className="flex bg-slate-100 p-1 rounded-2xl">
+                    <div className="flex bg-slate-100 p-0.5 rounded-lg">
                       {(['today', 'week', 'month', 'all'] as const).map((f) => (
                         <button
                           key={f}
                           onClick={() => setReportFilter(f)}
-                          className={`px-4 py-1.5 text-sm rounded-xl transition-all ${
-                            reportFilter === f ? 'bg-white shadow-sm font-medium' : 'text-slate-500 hover:text-slate-700'
+                          className={`px-3.5 py-1.5 text-xs font-medium rounded-md transition-all ${
+                            reportFilter === f ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
                           }`}
                         >
                           {f === 'today' ? 'Hari Ini' : f === 'week' ? 'Minggu Ini' : f === 'month' ? 'Bulan' : 'Semua'}
@@ -852,220 +809,192 @@ export default function AdminPage() {
                   </div>
 
                   {reportLoading ? (
-                    <div className="py-12 text-center text-slate-500">Memuat laporan...</div>
+                    <div className="py-12 text-center text-sm text-slate-400">Memuat laporan...</div>
                   ) : salesReport ? (
                     <>
-                      <div className="grid gap-4 mb-8 sm:grid-cols-3">
-                        <div className="p-4 rounded-2xl bg-sky-50 border border-sky-100">
-                          <p className="text-xs text-sky-600 uppercase font-bold tracking-wider">Total Pendapatan</p>
-                          <p className="text-2xl font-bold text-sky-900">Rp {salesReport.summary.totalRevenue.toLocaleString()}</p>
+                      <div className="grid gap-4 mb-6 sm:grid-cols-3">
+                        <div className="rounded-xl bg-sky-50 border border-sky-100 p-4">
+                          <p className="text-[10px] font-semibold text-sky-600 uppercase tracking-wider">Total Pendapatan</p>
+                          <p className="mt-1 text-2xl font-bold text-sky-900">Rp {salesReport.summary.totalRevenue.toLocaleString()}</p>
                         </div>
-                        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100">
-                          <p className="text-xs text-emerald-600 uppercase font-bold tracking-wider">Tiket Terjual</p>
-                          <p className="text-2xl font-bold text-emerald-900">{salesReport.summary.totalQuantity} Tiket</p>
+                        <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-4">
+                          <p className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wider">Tiket Terjual</p>
+                          <p className="mt-1 text-2xl font-bold text-emerald-900">{salesReport.summary.totalQuantity} Tiket</p>
                         </div>
-                        <div className="p-4 rounded-2xl bg-purple-50 border border-purple-100">
-                          <p className="text-xs text-purple-600 uppercase font-bold tracking-wider">Total Transaksi</p>
-                          <p className="text-2xl font-bold text-purple-900">{salesReport.summary.totalTransactions}</p>
+                        <div className="rounded-xl bg-amber-50 border border-amber-100 p-4">
+                          <p className="text-[10px] font-semibold text-amber-600 uppercase tracking-wider">Jumlah Transaksi</p>
+                          <p className="mt-1 text-2xl font-bold text-amber-900">{salesReport.summary.totalTransactions}</p>
                         </div>
                       </div>
 
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left">
-                          <thead>
-                            <tr className="border-b border-slate-100 text-sm text-slate-500">
-                              <th className="pb-4 font-medium">Jenis Tiket</th>
-                              <th className="pb-4 font-medium">Kuantitas</th>
-                              <th className="pb-4 font-medium text-right">Total Pendapatan</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-50">
-                            {salesReport.details.map((item: any) => (
-                              <tr key={item.ticketType}>
-                                <td className="py-4 font-medium">{item.ticketType}</td>
-                                <td className="py-4">{item.quantity}</td>
-                                <td className="py-4 text-right font-semibold">Rp {item.totalRevenue.toLocaleString()}</td>
+                      {salesReport.ticketTypeBreakdown && salesReport.ticketTypeBreakdown.length > 0 && (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b border-slate-100">
+                                <th className="text-left py-2.5 px-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Tipe Tiket</th>
+                                <th className="text-right py-2.5 px-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Jumlah</th>
+                                <th className="text-right py-2.5 px-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Pendapatan</th>
                               </tr>
-                            ))}
-                            {salesReport.details.length === 0 && (
-                              <tr>
-                                <td colSpan={3} className="py-8 text-center text-slate-400 italic">Tidak ada data penjualan pada periode ini</td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
+                            </thead>
+                            <tbody>
+                              {salesReport.ticketTypeBreakdown.map((item: any, index: number) => (
+                                <tr key={index} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                                  <td className="py-2.5 px-3 text-slate-700">{item.ticketType}</td>
+                                  <td className="py-2.5 px-3 text-right text-slate-600">{item.quantity}</td>
+                                  <td className="py-2.5 px-3 text-right font-medium text-slate-700">Rp {item.revenue.toLocaleString()}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      {salesReport.transactions && salesReport.transactions.length > 0 && (
+                        <div className="mt-6">
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Detail Transaksi</p>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b border-slate-100">
+                                  <th className="text-left py-2.5 px-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">ID</th>
+                                  <th className="text-left py-2.5 px-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Tanggal</th>
+                                  <th className="text-left py-2.5 px-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Tiket</th>
+                                  <th className="text-right py-2.5 px-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Total</th>
+                                  <th className="text-left py-2.5 px-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Kasir</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {salesReport.transactions.map((tx: any, index: number) => (
+                                  <tr key={index} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                                    <td className="py-2.5 px-3 text-xs text-slate-500 font-mono">{tx.transactionId?.slice(0, 12)}</td>
+                                    <td className="py-2.5 px-3 text-slate-600">{new Date(tx.createdAt).toLocaleDateString('id-ID')}</td>
+                                    <td className="py-2.5 px-3 text-slate-600">{tx.ticketType} x{tx.quantity}</td>
+                                    <td className="py-2.5 px-3 text-right font-medium text-slate-700">Rp {tx.total.toLocaleString()}</td>
+                                    <td className="py-2.5 px-3 text-slate-500">{tx.cashier || '-'}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
                     </>
                   ) : (
-                    <div className="py-12 text-center text-slate-500">Gagal memuat data. Silakan refresh.</div>
+                    <div className="py-12 text-center text-sm text-slate-400">Pilih filter untuk melihat laporan.</div>
                   )}
                 </div>
               </div>
             )}
 
             {view === 'printout' && (
-              <div className="rounded-3xl bg-white p-6 shadow-soft max-w-2xl">
-                <div className="mb-6 flex items-center justify-between">
+              <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-card max-w-lg">
+                <h2 className="text-base font-semibold text-slate-900">Custom Print Out</h2>
+                <p className="mt-1 text-sm text-slate-400">Sesuaikan tampilan struk pembayaran.</p>
+                <div className="mt-5 space-y-4">
                   <div>
-                    <h2 className="text-lg font-semibold">Custom Print Out</h2>
-                    <p className="text-sm text-slate-500">Sesuaikan tampilan struk thermal</p>
-                  </div>
-                  <button
-                    onClick={savePrintoutConfig}
-                    disabled={printoutSaving}
-                    className="rounded-2xl bg-sky-600 px-4 py-2 text-white hover:bg-sky-700 disabled:opacity-50"
-                  >
-                    {printoutSaving ? 'Menyimpan...' : 'Simpan'}
-                  </button>
-                </div>
-
-                {printoutMessage && (
-                  <div className={`mb-4 rounded-2xl p-3 text-sm ${printoutMessage.includes('Gagal') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
-                    {printoutMessage}
-                  </div>
-                )}
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-600 mb-1">Nama Tempat</label>
-                    <input
-                      type="text"
-                      value={printoutConfig.placeName}
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Nama Tempat</label>
+                    <input type="text" value={printoutConfig.placeName}
                       onChange={(e) => setPrintoutConfig({ ...printoutConfig, placeName: e.target.value })}
-                      className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-                    />
+                      className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 transition-colors focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20" />
                   </div>
-
                   <div>
-                    <label className="block text-sm font-medium text-slate-600 mb-1">Alamat</label>
-                    <textarea
-                      rows={2}
-                      value={printoutConfig.address}
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Alamat</label>
+                    <input type="text" value={printoutConfig.address}
                       onChange={(e) => setPrintoutConfig({ ...printoutConfig, address: e.target.value })}
-                      className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-                    />
+                      className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 transition-colors focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20" />
                   </div>
-
                   <div>
-                    <label className="block text-sm font-medium text-slate-600 mb-1">Telepon</label>
-                    <input
-                      type="text"
-                      value={printoutConfig.phone}
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Telepon</label>
+                    <input type="text" value={printoutConfig.phone}
                       onChange={(e) => setPrintoutConfig({ ...printoutConfig, phone: e.target.value })}
-                      className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-                    />
+                      className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 transition-colors focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20" />
                   </div>
-
                   <div>
-                    <label className="block text-sm font-medium text-slate-600 mb-1">Teks Header (tambahan)</label>
-                    <input
-                      type="text"
-                      value={printoutConfig.headerText}
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Teks Header</label>
+                    <input type="text" value={printoutConfig.headerText}
                       onChange={(e) => setPrintoutConfig({ ...printoutConfig, headerText: e.target.value })}
-                      className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-                      placeholder="Contoh: Jam Operasional 08:00 - 17:00"
-                    />
+                      className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 transition-colors focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20" />
                   </div>
-
                   <div>
-                    <label className="block text-sm font-medium text-slate-600 mb-1">Footer Baris 1</label>
-                    <input
-                      type="text"
-                      value={printoutConfig.footerMessage1}
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Footer 1</label>
+                    <input type="text" value={printoutConfig.footerMessage1}
                       onChange={(e) => setPrintoutConfig({ ...printoutConfig, footerMessage1: e.target.value })}
-                      className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-                    />
+                      className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 transition-colors focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20" />
                   </div>
-
                   <div>
-                    <label className="block text-sm font-medium text-slate-600 mb-1">Footer Baris 2</label>
-                    <input
-                      type="text"
-                      value={printoutConfig.footerMessage2}
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Footer 2</label>
+                    <input type="text" value={printoutConfig.footerMessage2}
                       onChange={(e) => setPrintoutConfig({ ...printoutConfig, footerMessage2: e.target.value })}
-                      className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-                    />
+                      className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 transition-colors focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20" />
                   </div>
                 </div>
-
-                <div className="mt-8 rounded-2xl bg-slate-50 p-4">
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Pratinjau Header Struk</p>
-                  <pre className="font-mono text-xs text-slate-800 bg-white rounded-xl p-3 border border-slate-100 whitespace-pre-wrap">
-                    {[printoutConfig.placeName, printoutConfig.address, printoutConfig.phone ? `Telp: ${printoutConfig.phone}` : '', ...(printoutConfig.headerText ? ['', printoutConfig.headerText] : [])].filter(Boolean).join('\n')}
-                  </pre>
-                </div>
+                {printoutMessage ? (
+                  <p className="mt-4 rounded-lg px-3 py-2 text-xs font-medium bg-green-50 text-green-600">{printoutMessage}</p>
+                ) : null}
+                <button onClick={savePrintoutConfig} disabled={printoutSaving}
+                  className="mt-5 w-full rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-medium text-white shadow-card transition-all hover:bg-sky-700 hover:shadow-card-hover active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60">
+                  {printoutSaving ? 'Menyimpan...' : 'Simpan Pengaturan'}
+                </button>
               </div>
             )}
 
             {view === 'transaksi' && (
-              <div className="rounded-3xl bg-white p-6 shadow-soft">
+              <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-card">
                 <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <h2 className="text-lg font-semibold">Riwayat Transaksi</h2>
-                    <p className="text-sm text-slate-500">Daftar transaksi pembayaran tiket</p>
+                    <h2 className="text-base font-semibold text-slate-900">Riwayat Transaksi</h2>
+                    <p className="text-sm text-slate-400">Data transaksi penjualan tiket</p>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex bg-slate-100 p-1 rounded-2xl">
+                  <div className="flex gap-2">
+                    <div className="flex bg-slate-100 p-0.5 rounded-lg">
                       {(['today', 'week', 'month', 'all'] as const).map((f) => (
                         <button
                           key={f}
-                          onClick={() => { setTxFilter(f); fetchTransactions(f) }}
-                          className={`px-3 py-1.5 text-sm rounded-xl transition-all ${
-                            txFilter === f ? 'bg-white shadow-sm font-medium' : 'text-slate-500 hover:text-slate-700'
+                          onClick={() => { setTxFilter(f); fetchTransactions(f); }}
+                          className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                            txFilter === f ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
                           }`}
                         >
                           {f === 'today' ? 'Hari Ini' : f === 'week' ? 'Minggu' : f === 'month' ? 'Bulan' : 'Semua'}
                         </button>
                       ))}
                     </div>
-                    <button
-                      onClick={() => fetchTransactions()}
-                      className="rounded-2xl bg-sky-600 px-4 py-2 text-sm text-white hover:bg-sky-700"
-                    >
-                      {txLoading ? 'Memuat...' : 'Refresh'}
+                    <button onClick={() => fetchTransactions(txFilter)} disabled={txLoading} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition-all hover:border-slate-300 active:scale-[0.97]">
+                      Refresh
                     </button>
                   </div>
                 </div>
 
                 {txLoading ? (
-                  <div className="py-12 text-center text-slate-500">Memuat transaksi...</div>
+                  <div className="py-12 text-center text-sm text-slate-400">Memuat transaksi...</div>
                 ) : transactions.length === 0 ? (
-                  <div className="py-12 text-center text-slate-400 italic">Tidak ada transaksi pada periode ini</div>
+                  <div className="py-12 text-center text-sm text-slate-400">Belum ada transaksi.</div>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full text-left">
+                    <table className="w-full text-sm">
                       <thead>
-                        <tr className="border-b border-slate-100 text-sm text-slate-500">
-                          <th className="pb-3 font-medium">Waktu</th>
-                          <th className="pb-3 font-medium">ID Transaksi</th>
-                          <th className="pb-3 font-medium">Tiket</th>
-                          <th className="pb-3 font-medium">Qty</th>
-                          <th className="pb-3 font-medium text-right">Total</th>
-                          <th className="pb-3 font-medium">Kasir</th>
-                          <th className="pb-3 font-medium">Status</th>
-                          <th className="pb-3 font-medium"></th>
+                        <tr className="border-b border-slate-100">
+                          <th className="text-left py-2.5 px-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">ID</th>
+                          <th className="text-left py-2.5 px-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Tanggal</th>
+                          <th className="text-left py-2.5 px-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Tiket</th>
+                          <th className="text-right py-2.5 px-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Total</th>
+                          <th className="text-left py-2.5 px-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Kasir</th>
+                          <th className="text-right py-2.5 px-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Aksi</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-50">
+                      <tbody>
                         {transactions.map((tx) => (
-                          <tr key={tx.transactionId} className="text-sm hover:bg-slate-50">
-                            <td className="py-3 whitespace-nowrap text-slate-500">
-                              {new Date(tx.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                            </td>
-                            <td className="py-3 font-mono text-xs max-w-[120px] truncate">{tx.transactionId}</td>
-                            <td className="py-3">{tx.ticketType}</td>
-                            <td className="py-3">{tx.quantity}</td>
-                            <td className="py-3 text-right font-semibold">Rp {tx.total.toLocaleString('id-ID')}</td>
-                            <td className="py-3 text-slate-600">{tx.cashier}</td>
-                            <td className="py-3">
-                              <span className="inline-block rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700">
-                                {tx.paymentStatus}
-                              </span>
-                            </td>
-                            <td className="py-3">
+                          <tr key={tx.transactionId} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                            <td className="py-2.5 px-3 text-xs text-slate-500 font-mono">{tx.transactionId?.slice(0, 12)}</td>
+                            <td className="py-2.5 px-3 text-slate-600">{new Date(tx.createdAt).toLocaleDateString('id-ID')} {new Date(tx.createdAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</td>
+                            <td className="py-2.5 px-3 text-slate-600">{tx.ticketType} x{tx.quantity}</td>
+                            <td className="py-2.5 px-3 text-right font-medium text-slate-700">Rp {tx.total.toLocaleString('id-ID')}</td>
+                            <td className="py-2.5 px-3 text-slate-500">{tx.cashier || '-'}</td>
+                            <td className="py-2.5 px-3 text-right">
                               <button
                                 onClick={() => handlePrintTransaction(tx)}
-                                className="rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-sky-100 hover:text-sky-700 transition-colors"
+                                className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 transition-all hover:border-slate-300 active:scale-[0.97]"
                               >
                                 Cetak
                               </button>
@@ -1081,6 +1010,6 @@ export default function AdminPage() {
           </section>
         </div>
       </div>
-    </main>
+    </div>
   )
 }
