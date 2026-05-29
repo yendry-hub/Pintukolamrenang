@@ -12,6 +12,7 @@ import {
   setOfflineSession,
   syncPendingTransactions
 } from '@/lib/offlineClient'
+import { playSuccessSound, playFailSound } from '@/lib/sounds'
 import StatusCard from '@/components/StatusCard'
 import type { GateStatus, ScanLog, TicketStats, TicketType } from '@/lib/types'
 
@@ -143,6 +144,8 @@ export default function KasirPage() {
     setGateFeedback({ gateId, ok: espOk, msg: espMsg })
     setGateLoading(null)
     fetchDashboard()
+    if (espOk) playSuccessSound()
+    else playFailSound()
     setTimeout(() => setGateFeedback(null), 3000)
   }
 
