@@ -125,20 +125,22 @@ export default function KasirPage() {
       }
     }
 
-    // Log scan ke Firestore — selalu catat, termasuk saat ESP gagal
-    try {
-      await fetch('/api/kasir-gate-scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          gateId,
-          uid: gateUid || undefined,
-          ticketType: gateTicketType,
-          note: `manual kasir — ${espMsg}`,
-        }),
-      })
-    } catch {
-      // scan log gagal — tidak perlu ganggu user
+    // Log scan ke Firestore — hanya saat gate benar-benar terbuka
+    if (espOk) {
+      try {
+        await fetch('/api/kasir-gate-scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gateId,
+            uid: gateUid || undefined,
+            ticketType: gateTicketType,
+            note: `manual kasir — ${espMsg}`,
+          }),
+        })
+      } catch {
+        // scan log gagal — tidak perlu ganggu user
+      }
     }
 
     setGateFeedback({ gateId, ok: espOk, msg: espMsg })
