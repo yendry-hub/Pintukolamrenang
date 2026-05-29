@@ -35,6 +35,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const card = cardSnap.data() || {}
         scanEntry.ticketType = card.ticketType ?? ticketType ?? 'Manual'
         scanEntry.userName = card.userName || card.name || ''
+
+        // Kurangi qtyAkses jika kartu punya kuota
+        if (typeof card.qtyAkses === 'number') {
+          await cardRef.update({
+            qtyAkses: admin.firestore.FieldValue.increment(-1),
+          })
+        }
       } else {
         scanEntry.ticketType = ticketType || 'Manual'
       }

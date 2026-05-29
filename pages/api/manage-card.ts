@@ -28,6 +28,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       }
 
+      if (req.body.qtyAkses !== undefined) {
+        cardData.qtyAkses = parseInt(req.body.qtyAkses, 10) || 0
+      }
+
       if (expiryDate) {
         cardData.expiryDate = admin.firestore.Timestamp.fromDate(new Date(expiryDate))
       }

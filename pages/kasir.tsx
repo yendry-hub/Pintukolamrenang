@@ -95,6 +95,28 @@ export default function KasirPage() {
   const [gateFeedback, setGateFeedback] = useState<{ gateId: string; ok: boolean; msg: string } | null>(null)
   const [gateUid, setGateUid] = useState('')
   const [gateTicketType, setGateTicketType] = useState('Manual')
+  const [gateCardInfo, setGateCardInfo] = useState<{ uid?: string; qtyAkses?: number; ticketType?: string; active?: boolean; blocked?: boolean } | null>(null)
+
+  useEffect(() => {
+    if (!gateUid.trim()) {
+      setGateCardInfo(null)
+      return
+    }
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/get-card?uid=${encodeURIComponent(gateUid.trim())}`)
+        if (res.ok) {
+          const data = await res.json()
+          setGateCardInfo(data.card || null)
+        } else {
+          setGateCardInfo(null)
+        }
+      } catch {
+        setGateCardInfo(null)
+      }
+    }, 400)
+    return () => clearTimeout(t)
+  }, [gateUid])
 
   const handleOpenGate = async (gateId: string) => {
     setGateLoading(gateId)
@@ -844,6 +866,29 @@ export default function KasirPage() {
                       </select>
                     </div>
                   </div>
+
+                  {gateCardInfo && (
+                    <div className="mt-3 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm">
+                      <div className="flex items-center gap-4 flex-wrap">
+                        <span className="text-slate-500">Kartu: <span className="font-mono font-medium text-slate-800">{gateCardInfo.uid || gateUid}</span></span>
+                        {gateCardInfo.ticketType && (
+                          <span className="text-slate-500">Tipe: <span className="font-medium text-slate-800">{gateCardInfo.ticketType}</span></span>
+                        )}
+                        {gateCardInfo.qtyAkses != null && (
+                          <span className="text-slate-500">Sisa Akses: <span className={`font-semibold ${gateCardInfo.qtyAkses > 0 ? 'text-emerald-600' : 'text-red-600'}`}>{gateCardInfo.qtyAkses}</span></span>
+                        )}
+                        {gateCardInfo.qtyAkses == null && (
+                          <span className="text-slate-500">Sisa Akses: <span className="font-medium text-slate-800">Tidak terbatas</span></span>
+                        )}
+                        {!gateCardInfo.active && (
+                          <span className="text-xs font-medium text-red-600">Kartu tidak aktif</span>
+                        )}
+                        {gateCardInfo.blocked && (
+                          <span className="text-xs font-medium text-red-600">Diblokir</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="mt-4 flex flex-wrap gap-3">
                     {['Gate-A', 'Gate-B'].map((gateId) => {

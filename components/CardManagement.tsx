@@ -9,6 +9,7 @@ type CardData = {
   active: boolean
   blocked: boolean
   used: boolean
+  qtyAkses?: number
   expiryDate?: string
   createdAt?: string
   updatedAt?: string
@@ -32,6 +33,7 @@ export default function CardManagement({ ticketTypes: propTicketTypes }: Props) 
   // Form state for register/edit
   const [formUid, setFormUid] = useState('')
   const [formTicketType, setFormTicketType] = useState<string>('Member')
+  const [formQtyAkses, setFormQtyAkses] = useState('')
   const [formActive, setFormActive] = useState(true)
   const [formBlocked, setFormBlocked] = useState(false)
   const [formExpiryDate, setFormExpiryDate] = useState('')
@@ -40,6 +42,7 @@ export default function CardManagement({ ticketTypes: propTicketTypes }: Props) 
   // Edit state
   const [editingUid, setEditingUid] = useState<string | null>(null)
   const [editTicketType, setEditTicketType] = useState<string>('Member')
+  const [editQtyAkses, setEditQtyAkses] = useState('')
   const [editActive, setEditActive] = useState(true)
   const [editBlocked, setEditBlocked] = useState(false)
   const [editExpiryDate, setEditExpiryDate] = useState('')
@@ -86,6 +89,9 @@ export default function CardManagement({ ticketTypes: propTicketTypes }: Props) 
         active: formActive,
         blocked: formBlocked,
       }
+      if (formQtyAkses) {
+        body.qtyAkses = parseInt(formQtyAkses, 10) || 0
+      }
       if (formExpiryDate) {
         body.expiryDate = formExpiryDate
       }
@@ -102,6 +108,7 @@ export default function CardManagement({ ticketTypes: propTicketTypes }: Props) 
       showMessage(`Kartu ${formUid.trim()} berhasil didaftarkan!`)
       setFormUid('')
       setFormTicketType('Member')
+      setFormQtyAkses('')
       setFormActive(true)
       setFormBlocked(false)
       setFormExpiryDate('')
@@ -124,6 +131,9 @@ export default function CardManagement({ ticketTypes: propTicketTypes }: Props) 
         ticketType: editTicketType,
         active: editActive,
         blocked: editBlocked,
+      }
+      if (editQtyAkses) {
+        body.qtyAkses = parseInt(editQtyAkses, 10) || 0
       }
       if (editExpiryDate) {
         body.expiryDate = editExpiryDate
@@ -174,6 +184,7 @@ export default function CardManagement({ ticketTypes: propTicketTypes }: Props) 
   const startEdit = (card: CardData) => {
     setEditingUid(card.uid)
     setEditTicketType(card.ticketType)
+    setEditQtyAkses(card.qtyAkses != null ? String(card.qtyAkses) : '')
     setEditActive(card.active)
     setEditBlocked(card.blocked)
     setEditExpiryDate(card.expiryDate?.split('T')[0] || '')
@@ -250,6 +261,7 @@ export default function CardManagement({ ticketTypes: propTicketTypes }: Props) 
                     <th className="pb-3 font-medium">UID</th>
                     <th className="pb-3 font-medium">Jenis</th>
                     <th className="pb-3 font-medium">Status</th>
+                    <th className="pb-3 font-medium">Sisa Akses</th>
                     <th className="pb-3 font-medium">Expired</th>
                     <th className="pb-3 font-medium">Terdaftar</th>
                     <th className="pb-3 font-medium text-right">Aksi</th>
@@ -289,6 +301,16 @@ export default function CardManagement({ ticketTypes: propTicketTypes }: Props) 
                                 /> Blokir
                               </label>
                             </div>
+                          </td>
+                          <td className="py-3">
+                            <input
+                              type="number"
+                              min={0}
+                              value={editQtyAkses}
+                              onChange={(e) => setEditQtyAkses(e.target.value)}
+                              className="w-20 rounded-xl border border-slate-200 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-sky-500"
+                              placeholder="Unlimited"
+                            />
                           </td>
                           <td className="py-3">
                             <input
@@ -338,6 +360,9 @@ export default function CardManagement({ ticketTypes: propTicketTypes }: Props) 
                             ) : (
                               <span className="text-xs font-medium text-slate-400">Nonaktif</span>
                             )}
+                          </td>
+                          <td className="py-3">
+                            <span className="text-xs font-medium">{card.qtyAkses != null ? card.qtyAkses : '∞'}</span>
                           </td>
                           <td className="py-3 text-xs text-slate-500">{card.expiryDate ? formatDate(card.expiryDate) : '-'}</td>
                           <td className="py-3 text-xs text-slate-500">{formatDate(card.createdAt)}</td>
@@ -396,6 +421,17 @@ export default function CardManagement({ ticketTypes: propTicketTypes }: Props) 
                   <option key={t} value={t}>{t}</option>
                 ))}
               </select>
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700">Jumlah Akses <span className="text-slate-400">(opsional, kosongi jika tidak terbatas)</span></span>
+              <input
+                type="number"
+                min={0}
+                value={formQtyAkses}
+                onChange={(e) => setFormQtyAkses(e.target.value)}
+                className="mt-1.5 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm focus:border-sky-500 focus:outline-none"
+                placeholder="Contoh: 50"
+              />
             </label>
             <label className="block">
               <span className="text-sm font-medium text-slate-700">Tanggal Kadaluarsa <span className="text-slate-400">(opsional)</span></span>

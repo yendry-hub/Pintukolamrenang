@@ -38,7 +38,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const isActive = Boolean(card.active && expiryValid)
-    const valid = Boolean(isActive && !card.used && !card.blocked)
+    const qtyAkses = card.qtyAkses
+    const hasQtyAkses = typeof qtyAkses === 'number'
+
+    let valid: boolean
+    if (hasQtyAkses) {
+      valid = isActive && qtyAkses > 0 && !card.blocked
+    } else {
+      valid = isActive && !card.used && !card.blocked
+    }
 
     if (!valid) {
       return res.status(400).json({ result: 'FAIL', reason: card.blocked ? 'Card blocked' : 'Ticket invalid or expired' })
@@ -54,11 +62,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       cardData: card
     })
 
-    // Tandai kartu sudah digunakan sekarang (cegah duplikat)
-    await cardRef.update({
+    // Kurangi qtyAkses atau tandai used
+    const updateData: Record<string, any> = {
       lastUsedAt: admin.firestore.FieldValue.serverTimestamp(),
-      used: true
-    })
+    }
+    if (hasQtyAkses) {
+      updateData.qtyAkses = admin.firestore.FieldValue.increment(-1)
+    } else {
+      updateData.used = true
+    }
+    await cardRef.update(updateData)
 
     return res.status(200).json({ result: 'OPEN' })
   } catch (error: any) {
