@@ -140,8 +140,9 @@ export default function KasirPage() {
       // scan log gagal — tidak perlu ganggu user
     }
 
-    setGateFeedback({ gateId, ok: espOk || !!ip, msg: espMsg })
+    setGateFeedback({ gateId, ok: espOk, msg: espMsg })
     setGateLoading(null)
+    fetchDashboard()
     setTimeout(() => setGateFeedback(null), 3000)
   }
 
