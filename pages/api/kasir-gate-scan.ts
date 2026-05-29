@@ -21,6 +21,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const scanEntry: Record<string, any> = {
       gate: gateId,
       scannedAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
       scanDate: getTodayStartJakarta(),
       status: 'OPEN',
       note: note || 'manual kasir'
