@@ -328,8 +328,10 @@ void readUidFromRc522() {
   lastScanMillis = millis();
   Serial.print("KARTU TERBACA: ");
   Serial.println(uid);
-  Log.print("KARTU: ");
+  Log.println("=== SCAN ===");
+  Log.print("UID: ");
   Log.println(uid);
+  Log.println("SENDING...");
   flashCardDetectedLed();
   sendUid(uid);
 }
@@ -454,6 +456,7 @@ void sendUid(const String& uid) {
   Log.print(httpCode);
   Log.print(": ");
   Log.println(response);
+  Log.println("===========");
 
   if (httpCode == HTTP_CODE_OK && response.indexOf("OPEN") >= 0) {
     openGate();

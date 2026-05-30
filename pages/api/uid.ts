@@ -24,6 +24,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const cardSnap = await cardRef.get()
 
     if (!cardSnap.exists) {
+      // Simpan UID kartu yang tidak dikenal — muncul di admin panel
+      try {
+        await db.collection('unregisteredScans').doc(uid).set({
+          uid,
+          gateId,
+          scannedAt: admin.firestore.FieldValue.serverTimestamp(),
+          seenCount: admin.firestore.FieldValue.increment(1),
+        }, { merge: true })
+      } catch (_) {
+        // abort if this fails
+      }
       return res.status(404).json({ result: 'FAIL', reason: 'UID not registered' })
     }
 

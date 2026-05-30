@@ -29,6 +29,7 @@ export default function CardManagement({ ticketTypes: propTicketTypes }: Props) 
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState<string | null>(null)
   const [messageType, setMessageType] = useState<'success' | 'error'>('success')
+  const [unregisteredScans, setUnregisteredScans] = useState<{ uid: string; gateId: string; scannedAt: string | null; seenCount: number }[]>([])
 
   // Form state for register/edit
   const [formUid, setFormUid] = useState('')
@@ -70,8 +71,24 @@ export default function CardManagement({ ticketTypes: propTicketTypes }: Props) 
     }
   }
 
+  const fetchUnregisteredScans = async () => {
+    try {
+      const token = await getFirebaseIdToken()
+      const res = await fetch('/api/get-unregistered-scans', {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setUnregisteredScans(data.scans || [])
+      }
+    } catch {
+      // silent
+    }
+  }
+
   useEffect(() => {
     fetchCards()
+    fetchUnregisteredScans()
   }, [])
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -231,6 +248,32 @@ export default function CardManagement({ ticketTypes: propTicketTypes }: Props) 
           Daftarkan Kartu Baru
         </button>
       </div>
+
+      {/* Kartu terdeteksi (belum terdaftar) */}
+      {unregisteredScans.length > 0 && (
+        <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-soft">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-amber-900">Kartu Terdeteksi (Belum Terdaftar)</h3>
+              <p className="text-xs text-amber-700">Scan kartu berikut muncul di sistem tapi belum punya data anggota. Klik "Daftarkan" untuk isi UID otomatis.</p>
+            </div>
+            <button onClick={fetchUnregisteredScans} className="rounded-xl bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700">Refresh</button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {unregisteredScans.map((s) => (
+              <button
+                key={s.uid}
+                onClick={() => { setFormUid(s.uid); setTab('register') }}
+                className="inline-flex items-center gap-2 rounded-xl bg-white px-3.5 py-2 text-xs font-mono font-medium text-amber-900 shadow-sm border border-amber-200 hover:bg-amber-100 transition-colors"
+              >
+                {s.uid}
+                <span className="text-[10px] text-amber-500">{s.seenCount}x</span>
+                <span className="rounded-md bg-amber-200 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">Daftarkan</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Tab: List Cards */}
       {tab === 'list' && (
