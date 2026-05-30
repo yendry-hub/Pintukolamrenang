@@ -77,7 +77,7 @@ const unsigned long RELAY_OPEN_MS = 3000;
 const int RESET_CONFIG_PIN = 0; // Flash button (D3 / GPIO0) — tekan saat boot untuk reset WiFi
 
 MFRC522 mfrc522(RC522_SS_PIN, RC522_RST_PIN);
-const unsigned long UID_CONFIRM_TIMEOUT_MS = 2000;
+const unsigned long UID_CONFIRM_TIMEOUT_MS = 5000;
 const unsigned long STATUS_LED_INTERVAL_MS = 5000;
 const unsigned long CARD_DETECTED_LED_MS = 120;
 

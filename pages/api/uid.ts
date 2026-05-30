@@ -38,6 +38,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(404).json({ result: 'FAIL', reason: 'UID not registered' })
     }
 
+    // Bersihkan dari daftar tidak terdaftar jika masih ada (misal dari scan sebelumnya)
+    try {
+      await db.collection('unregisteredScans').doc(uid).delete()
+    } catch (_) {
+      // silent
+    }
+
     const card = cardSnap.data() || {}
     let expiryValid = true
     if (card.expiryDate) {
@@ -56,7 +63,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (hasQtyAkses) {
       valid = isActive && qtyAkses > 0 && !card.blocked
     } else {
-      valid = isActive && !card.used && !card.blocked
+      valid = isActive && !card.blocked
     }
 
     if (!valid) {
@@ -73,14 +80,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       cardData: card
     })
 
-    // Kurangi qtyAkses atau tandai used
+    // Kurangi qtyAkses — jika tidak diset, berarti unlimited
     const updateData: Record<string, any> = {
       lastUsedAt: admin.firestore.FieldValue.serverTimestamp(),
     }
     if (hasQtyAkses) {
       updateData.qtyAkses = admin.firestore.FieldValue.increment(-1)
-    } else {
-      updateData.used = true
     }
     await cardRef.update(updateData)
 

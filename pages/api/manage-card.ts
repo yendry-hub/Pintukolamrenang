@@ -46,6 +46,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         await cardRef.update(cardData)
       }
 
+      // Hapus dari daftar kartu tidak terdaftar (jika ada)
+      try {
+        await db.collection('unregisteredScans').doc(uid).delete()
+      } catch (_) {
+        // silent
+      }
+
       return res.status(200).json({ success: true, message: 'Card updated successfully' })
     }
 
