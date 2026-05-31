@@ -20,12 +20,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
         env:
-          NPM_CONFIG_REGISTRY: https://registry.npmjs.org
+          NODE_OPTIONS: --dns-result-order=ipv4first
+        run: |
+          npm install --fetch-timeout=120000 2>&1 || \
+          npm install --fetch-timeout=180000 --prefer-online 2>&1 || \
+          npm install --registry https://registry.npmmirror.com 2>&1
 
       - name: Build Next.js (static export)
         run: npm run build
