@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'export',
+  ...(process.env.BUILD_MODE === 'export' ? { output: 'export' } : {}),
   images: {
     unoptimized: true,
   },

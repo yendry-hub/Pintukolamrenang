@@ -33,7 +33,7 @@ jobs:
           npm install --registry https://registry.npmmirror.com 2>&1
 
       - name: Build Next.js (static export)
-        run: npm run build
+        run: BUILD_MODE=export npm run build
 
       - name: Copy web build to Android project
         run: npx cap copy
