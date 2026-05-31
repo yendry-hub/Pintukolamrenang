@@ -164,7 +164,7 @@ public class BluetoothPrinterPlugin extends Plugin {
     try {
       byte[] buffer = new byte[dataArray.length()];
       for (int i = 0; i < dataArray.length(); i++) {
-        buffer[i] = (byte) dataArray.getInteger(i);
+        buffer[i] = (byte) dataArray.getInt(i);
       }
       outputStream.write(buffer);
       outputStream.flush();
