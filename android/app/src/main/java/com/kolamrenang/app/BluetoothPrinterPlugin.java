@@ -22,6 +22,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.Set;
 import java.util.UUID;
 
+import org.json.JSONException;
+
 @CapacitorPlugin(name = "BluetoothPrinter")
 public class BluetoothPrinterPlugin extends Plugin {
 
@@ -169,7 +171,7 @@ public class BluetoothPrinterPlugin extends Plugin {
       outputStream.write(buffer);
       outputStream.flush();
       call.resolve();
-    } catch (IOException e) {
+    } catch (IOException | JSONException e) {
       Log.e(TAG, "ESC/POS print failed", e);
       call.reject("ESC/POS print failed: " + e.getMessage());
     }
