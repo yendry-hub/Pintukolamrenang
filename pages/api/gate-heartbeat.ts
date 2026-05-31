@@ -60,6 +60,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           createdAt: admin.firestore.FieldValue.serverTimestamp()
         })
         await pendingRef.delete()
+      } else {
+        // Scan ack tanpa pendingScans — terjadi saat ESP fail-open (koneksi gagal)
+        // Catat tetap sebagai OPEN (tidak server-verified)
+        await db.collection('scanLogs').add({
+          uid: scanUid,
+          gateId: id,
+          status: 'OPEN',
+          ticketType: 'Unknown',
+          scannedAt: admin.firestore.FieldValue.serverTimestamp(),
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          note: 'fail-open (connection timeout)',
+        })
       }
     }
 

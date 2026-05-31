@@ -64,13 +64,18 @@ export default function AdminPage() {
   const [createMessage, setCreateMessage] = useState<string | null>(null)
   const [createError, setCreateError] = useState<string | null>(null)
   const [authInitialized, setAuthInitialized] = useState(false)
-  const [view, setView] = useState<'dashboard' | 'kasir' | 'kartu' | 'grafik' | 'riwayat' | 'harga' | 'laporan' | 'transaksi' | 'printout'>('dashboard')
+  const [view, setView] = useState<'dashboard' | 'kasir' | 'kartu' | 'grafik' | 'riwayat' | 'harga' | 'laporan' | 'transaksi' | 'printout' | 'laporan-pengunjung'>('dashboard')
   const [ticketPrices, setTicketPrices] = useState<Record<string, number>>(INITIAL_TICKET_PRICES)
   const [priceSaving, setPriceSaving] = useState(false)
   const [priceMessage, setPriceMessage] = useState<string | null>(null)
+  const [ticketTypeRows, setTicketTypeRows] = useState<{ name: string; price: number }[]>([])
+  const [ticketTypeSaving, setTicketTypeSaving] = useState(false)
   const [reportFilter, setReportFilter] = useState<'today' | 'week' | 'month' | 'all'>('today')
   const [salesReport, setSalesReport] = useState<any>(null)
   const [reportLoading, setReportLoading] = useState(false)
+  const [visitorReport, setVisitorReport] = useState<any>(null)
+  const [visitorReportLoading, setVisitorReportLoading] = useState(false)
+  const [visitorReportFilter, setVisitorReportFilter] = useState<'today' | 'week' | 'month' | 'all'>('today')
   const [offlineMode, setOfflineMode] = useState(false)
   const [ticketTypes, setTicketTypes] = useState<string[]>([])
   const [paymentMethods, setPaymentMethods] = useState<string[]>(['Tunai', 'Kartu Debit', 'Kartu Kredit', 'E-Wallet'])
@@ -264,6 +269,10 @@ export default function AdminPage() {
           setTicketPrices(data.prices)
           cacheJson('ticketPrices', data.prices)
         }
+        // populate ticketTypeRows from both
+        const types = data.ticketTypes?.length ? data.ticketTypes : DEFAULT_TICKET_TYPES
+        const prices = data.prices || INITIAL_TICKET_PRICES
+        setTicketTypeRows(types.map((t: string) => ({ name: t, price: prices[t] || 0 })))
       }
     } catch (err) {
       console.error('Failed to fetch config:', err)
@@ -368,6 +377,32 @@ export default function AdminPage() {
     }
   }
 
+  const fetchVisitorReport = async (filter = visitorReportFilter) => {
+    setVisitorReportLoading(true)
+    setError(null)
+    try {
+      const token = await getFirebaseIdToken()
+      const res = await fetch(`/api/laporan-pengunjung?filter=${filter}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (res.status === 401) {
+        await logoutFirebase()
+        router.replace('/login')
+        return
+      }
+      const data = await res.json()
+      if (res.ok) {
+        setVisitorReport(data)
+      } else {
+        setError(data.error || 'Gagal memuat laporan pengunjung')
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Gagal memuat laporan pengunjung')
+    } finally {
+      setVisitorReportLoading(false)
+    }
+  }
+
   // Auto-refresh saat view berubah
   useEffect(() => {
     if (view === 'laporan') {
@@ -378,8 +413,14 @@ export default function AdminPage() {
       fetchTransactions()
     } else if (view === 'printout') {
       fetchPrintoutConfig()
+    } else if (view === 'laporan-pengunjung') {
+      fetchVisitorReport()
     }
   }, [view, reportFilter])
+
+  useEffect(() => {
+    if (view === 'laporan-pengunjung') fetchVisitorReport()
+  }, [visitorReportFilter])
 
   const handleLogout = async () => {
     clearOfflineSession()
@@ -474,6 +515,7 @@ export default function AdminPage() {
               <NavButton label="Pengaturan Harga" active={view === 'harga'} onClick={() => setView('harga')} />
               <NavButton label="Custom Print Out" active={view === 'printout'} onClick={() => setView('printout')} />
               <NavButton label="Laporan Penjualan" active={view === 'laporan'} onClick={() => setView('laporan')} />
+              <NavButton label="Laporan Pengunjung" active={view === 'laporan-pengunjung'} onClick={() => setView('laporan-pengunjung')} />
             </nav>
           </aside>
 
@@ -738,27 +780,57 @@ export default function AdminPage() {
 
             {view === 'harga' && (
               <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-card max-w-2xl">
-                <h2 className="text-base font-semibold text-slate-900 mb-5">Pengaturan Harga Tiket</h2>
-                <div className="space-y-3">
-                  {(ticketTypes.length ? ticketTypes : DEFAULT_TICKET_TYPES).map((ticketType) => (
-                    <div key={ticketType} className="flex items-center gap-4 rounded-xl bg-slate-50/50 border border-slate-100 px-4 py-3">
-                      <label className="flex-1 text-sm font-medium text-slate-600 min-w-40">{ticketType}</label>
-                      <div className="flex items-center gap-2 w-48">
+                <h2 className="text-base font-semibold text-slate-900 mb-1">Pengaturan Jenis Tiket & Harga</h2>
+                <p className="text-sm text-slate-400 mb-5">Tambah, ubah nama/harga, atau hapus jenis tiket.</p>
+
+                <div className="space-y-2">
+                  {ticketTypeRows.map((row, idx) => (
+                    <div key={idx} className="flex items-center gap-3 rounded-xl bg-slate-50/50 border border-slate-100 px-4 py-2.5">
+                      <input
+                        type="text"
+                        value={row.name}
+                        onChange={(e) => {
+                          const next = [...ticketTypeRows]
+                          next[idx] = { ...next[idx], name: e.target.value }
+                          setTicketTypeRows(next)
+                        }}
+                        placeholder="Nama tiket"
+                        className="flex-1 min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 transition-colors focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                      />
+                      <div className="flex items-center gap-1.5 shrink-0">
                         <span className="text-sm text-slate-400">Rp</span>
                         <input
                           type="number"
                           min={0}
-                          value={ticketPrices[ticketType]}
-                          onChange={(e) => setTicketPrices({
-                            ...ticketPrices,
-                            [ticketType]: Number(e.target.value)
-                          })}
-                          className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 transition-colors focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                          value={row.price}
+                          onChange={(e) => {
+                            const next = [...ticketTypeRows]
+                            next[idx] = { ...next[idx], price: Number(e.target.value) }
+                            setTicketTypeRows(next)
+                          }}
+                          className="w-28 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 transition-colors focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
                         />
                       </div>
+                      <button
+                        onClick={() => setTicketTypeRows(ticketTypeRows.filter((_, i) => i !== idx))}
+                        className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all"
+                        title="Hapus tipe tiket"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                          <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c-.84 0-1.673.025-2.5.075V3.75c0-.69.56-1.25 1.25-1.25h2.5c.69 0 1.25.56 1.25 1.25v.325C11.673 4.025 10.84 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clipRule="evenodd" />
+                        </svg>
+                      </button>
                     </div>
                   ))}
                 </div>
+
+                <button
+                  onClick={() => setTicketTypeRows([...ticketTypeRows, { name: '', price: 0 }])}
+                  className="mt-3 w-full rounded-xl border-2 border-dashed border-slate-200 py-2.5 text-sm font-medium text-slate-400 transition-all hover:border-sky-300 hover:text-sky-600 hover:bg-sky-50/50"
+                >
+                  + Tambah Jenis Tiket Baru
+                </button>
+
                 {priceMessage ? (
                   <p className={`mt-4 rounded-lg px-3 py-2 text-xs font-medium ${
                     priceMessage.includes('Error') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'
@@ -766,20 +838,60 @@ export default function AdminPage() {
                     {priceMessage}
                   </p>
                 ) : null}
+
                 <div className="mt-5 flex gap-3">
                   <button
-                    onClick={handleSaveTicketPrices}
-                    disabled={priceSaving}
+                    onClick={async () => {
+                      const validRows = ticketTypeRows.filter(r => r.name.trim())
+                      if (validRows.length === 0) {
+                        setPriceMessage('Error: Setidaknya satu jenis tiket harus diisi')
+                        setTimeout(() => setPriceMessage(null), 3000)
+                        return
+                      }
+                      setTicketTypeSaving(true)
+                      setPriceMessage(null)
+                      try {
+                        const token = await getFirebaseIdToken()
+                        const res = await fetch('/api/manage-ticket-config', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                          body: JSON.stringify({
+                            action: 'batch',
+                            ticketTypes: validRows.map(r => r.name.trim()),
+                            prices: Object.fromEntries(validRows.map(r => [r.name.trim(), r.price]))
+                          })
+                        })
+                        const data = await res.json()
+                        if (res.ok) {
+                          setPriceMessage('Konfigurasi tiket berhasil disimpan!')
+                          setTicketTypes(data.ticketTypes)
+                          setTicketPrices(data.prices)
+                          cacheJson('ticketTypes', data.ticketTypes)
+                          cacheJson('ticketPrices', data.prices)
+                        } else {
+                          setPriceMessage('Error: ' + (data.error || 'Gagal menyimpan'))
+                        }
+                      } catch (err: any) {
+                        setPriceMessage('Error: ' + (err?.message || 'Gagal menyimpan'))
+                      } finally {
+                        setTicketTypeSaving(false)
+                      }
+                      setTimeout(() => setPriceMessage(null), 3000)
+                    }}
+                    disabled={ticketTypeSaving}
                     className="flex-1 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-medium text-white shadow-card transition-all hover:bg-sky-700 hover:shadow-card-hover active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {priceSaving ? 'Menyimpan...' : 'Simpan Pengaturan Harga'}
+                    {ticketTypeSaving ? 'Menyimpan...' : 'Simpan Pengaturan Tiket'}
                   </button>
                   <button
-                    onClick={fetchConfig}
+                    onClick={() => {
+                      const types = ticketTypes.length ? ticketTypes : DEFAULT_TICKET_TYPES
+                      setTicketTypeRows(types.map(t => ({ name: t, price: ticketPrices[t] || 0 })))
+                    }}
                     className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 shadow-card transition-all hover:border-slate-300 hover:shadow-card-hover active:scale-[0.97]"
-                    title="Muat ulang harga dari database"
+                    title="Reset ke data terakhir dari database"
                   >
-                    Muat Ulang
+                    Reset
                   </button>
                 </div>
               </div>
@@ -879,6 +991,141 @@ export default function AdminPage() {
                           </div>
                         </div>
                       )}
+                    </>
+                  ) : (
+                    <div className="py-12 text-center text-sm text-slate-400">Pilih filter untuk melihat laporan.</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {view === 'laporan-pengunjung' && (
+              <div className="space-y-6 animate-fade-in">
+                <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-card">
+                  <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h2 className="text-base font-semibold text-slate-900">Laporan Pengunjung</h2>
+                      <p className="text-sm text-slate-400">Jumlah pengunjung berdasarkan jenis tiket</p>
+                    </div>
+                    <div className="flex bg-slate-100 p-0.5 rounded-lg">
+                      {(['today', 'week', 'month', 'all'] as const).map((f) => (
+                        <button
+                          key={f}
+                          onClick={() => setVisitorReportFilter(f)}
+                          className={`px-3.5 py-1.5 text-xs font-medium rounded-md transition-all ${
+                            visitorReportFilter === f ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
+                          }`}
+                        >
+                          {f === 'today' ? 'Hari Ini' : f === 'week' ? 'Minggu Ini' : f === 'month' ? 'Bulan' : 'Semua'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {visitorReportLoading ? (
+                    <div className="py-12 text-center text-sm text-slate-400">Memuat laporan...</div>
+                  ) : visitorReport ? (
+                    <>
+                      <div className="grid gap-4 mb-6 sm:grid-cols-2 lg:grid-cols-4">
+                        <div className="rounded-xl bg-sky-50 border border-sky-100 p-4">
+                          <p className="text-[10px] font-semibold text-sky-600 uppercase tracking-wider">Total Pengunjung</p>
+                          <p className="mt-1 text-2xl font-bold text-sky-900">{visitorReport.summary.totalVisitors}</p>
+                        </div>
+                        <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-4">
+                          <p className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wider">Jenis Tiket</p>
+                          <p className="mt-1 text-2xl font-bold text-emerald-900">{visitorReport.breakdown.length}</p>
+                        </div>
+                        <div className="rounded-xl bg-indigo-50 border border-indigo-100 p-4">
+                          <p className="text-[10px] font-semibold text-indigo-600 uppercase tracking-wider">Periode Mulai</p>
+                          <p className="mt-1 text-lg font-bold text-indigo-900">{new Date(visitorReport.startDate).toLocaleDateString('id-ID')}</p>
+                        </div>
+                        <div className="rounded-xl bg-amber-50 border border-amber-100 p-4">
+                          <p className="text-[10px] font-semibold text-amber-600 uppercase tracking-wider">Periode Selesai</p>
+                          <p className="mt-1 text-lg font-bold text-amber-900">{new Date(visitorReport.endDate).toLocaleDateString('id-ID')}</p>
+                        </div>
+                      </div>
+
+                      {visitorReport.breakdown.length > 0 && (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b border-slate-100">
+                                <th className="text-left py-2.5 px-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Jenis Tiket</th>
+                                <th className="text-right py-2.5 px-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Jumlah</th>
+                                <th className="text-right py-2.5 px-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Persentase</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {visitorReport.breakdown.map((item: any, index: number) => (
+                                <tr key={index} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                                  <td className="py-2.5 px-3 text-slate-700 font-medium">{item.ticketType}</td>
+                                  <td className="py-2.5 px-3 text-right text-slate-600">{item.count}</td>
+                                  <td className="py-2.5 px-3 text-right text-slate-600">
+                                    <span className="inline-flex items-center gap-1.5">
+                                      <div className="w-20 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                                        <div
+                                          className="h-full rounded-full bg-sky-500 transition-all"
+                                          style={{ width: `${item.percentage}%` }}
+                                        />
+                                      </div>
+                                      {item.percentage}%
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      {visitorReport.breakdown.map((item: any, index: number) => (
+                        <div key={index} className="mt-6">
+                          <div className="flex items-center justify-between mb-3">
+                            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{item.ticketType} — {item.count} scan</h3>
+                          </div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b border-slate-100">
+                                  <th className="text-left py-2 px-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">UID</th>
+                                  <th className="text-left py-2 px-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Gate</th>
+                                  <th className="text-left py-2 px-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Waktu</th>
+                                  <th className="text-left py-2 px-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Status</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {item.items.slice(0, 50).map((scan: any, si: number) => (
+                                  <tr key={si} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                                    <td className="py-2 px-3 text-xs text-slate-600 font-mono">{scan.uid}</td>
+                                    <td className="py-2 px-3 text-xs text-slate-600">{scan.gate || scan.gateId || '-'}</td>
+                                    <td className="py-2 px-3 text-xs text-slate-500">
+                                      {scan.createdAt?._seconds
+                                        ? new Date(scan.createdAt._seconds * 1000).toLocaleString('id-ID')
+                                        : scan.scannedAt || '-'}
+                                    </td>
+                                    <td className="py-2 px-3 text-xs">
+                                      <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                                        scan.status === 'VALID' || scan.status === 'OPEN' ? 'bg-emerald-50 text-emerald-700' :
+                                        scan.status === 'INVALID' ? 'bg-red-50 text-red-700' :
+                                        'bg-slate-50 text-slate-500'
+                                      }`}>
+                                        {scan.status}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))}
+                                {item.items.length > 50 && (
+                                  <tr>
+                                    <td colSpan={4} className="py-3 px-3 text-xs text-slate-400 text-center italic">
+                                      ... dan {item.items.length - 50} scan lainnya
+                                    </td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      ))}
                     </>
                   ) : (
                     <div className="py-12 text-center text-sm text-slate-400">Pilih filter untuk melihat laporan.</div>
