@@ -458,53 +458,60 @@ export default function KasirPage() {
 
   const handlePrintReceipt = () => {
     if (!receipt) return
-    const printWindow = window.open('', '', 'width=300,height=600')
+    const styleContent = `
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      @page {
+        size: 58mm 297mm;
+        margin: 0;
+      }
+      html, body {
+        font-family: 'Courier New', 'Courier', monospace;
+        width: 58mm;
+        max-width: 58mm;
+        background: #fff;
+        color: #000;
+      }
+      body {
+        padding: 2mm;
+        font-size: 9px;
+        line-height: 1.2;
+      }
+      pre {
+        width: 54mm;
+        max-width: 54mm;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: 'Courier New', 'Courier', monospace;
+        font-size: 9px;
+        line-height: 1.2;
+      }
+      @media print {
+        @page {
+          size: 58mm 297mm;
+          margin: 0;
+        }
+        html, body {
+          width: 58mm;
+          max-width: 58mm;
+        }
+        pre {
+          width: 54mm;
+          max-width: 54mm;
+        }
+      }
+    `
+
+    const printWindow = window.open('', '_blank', 'width=360,height=640,menubar=no,toolbar=no,location=no')
     if (!printWindow) return
 
     const escapedReceipt = escapeHtml(receipt)
-
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Struk Pembayaran</title>
-          <style>
-            @page {
-              size: 58mm auto;
-              margin: 0;
-            }
-            * {
-              box-sizing: border-box;
-            }
-            html,
-            body {
-              font-family: 'Courier New', monospace;
-              margin: 0;
-              padding: 0;
-              width: 58mm;
-              background: #fff;
-            }
-            body {
-              padding: 2mm;
-              color: #000;
-              font-size: 10px;
-              line-height: 1.25;
-            }
-            pre {
-              margin: 0;
-              width: 54mm;
-              white-space: pre-wrap;
-              word-break: break-word;
-            }
-          </style>
-        </head>
-        <body>
-          <pre>${escapedReceipt}</pre>
-        </body>
-      </html>
-    `)
+    printWindow.document.write(`<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"><title>Struk Pembayaran</title><style>${styleContent}</style></head><body><pre>${escapedReceipt}</pre></body></html>`)
     printWindow.document.close()
     printWindow.focus()
-    printWindow.print()
+
+    setTimeout(() => {
+      printWindow.print()
+    }, 300)
   }
 
   const handleLogout = async () => {
