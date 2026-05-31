@@ -88,7 +88,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       todayTransactionsSnap.forEach((doc) => {
         const data = doc.data()
         todayTransactionCount++
-        todayRevenue += Number(data.price) || 0
+        todayRevenue += Number(data.total) || Number(data.price) * Number(data.quantity || 1) || 0
       })
     } catch (txErr) {
       console.error('Failed to fetch transactions (index may be missing):', txErr)
