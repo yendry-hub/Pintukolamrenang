@@ -1,0 +1,18 @@
+{
+  "appId": "com.kolamrenang.app",
+  "appName": "Kolam Renang",
+  "webDir": "out",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "buildOptions": {
+      "keystorePath": null,
+      "keystorePassword": null,
+      "keystoreAlias": null,
+      "keystoreAliasPassword": null,
+      "releaseType": null
+    }
+  }
+}

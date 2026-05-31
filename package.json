@@ -6,9 +6,14 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "cap:build": "next build && npx cap copy",
+    "cap:sync": "npx cap sync",
+    "cap:open:android": "npx cap open android"
   },
   "dependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
     "firebase": "^10.11.0",
     "firebase-admin": "^13.10.0",
     "idb": "^7.1.1",
@@ -17,6 +22,7 @@
     "react-dom": "18.3.1"
   },
   "devDependencies": {
+    "@capacitor/cli": "^6.0.0",
     "@types/node": "^25.9.0",
     "@types/react": "^19.2.14",
     "autoprefixer": "^10.4.19",

@@ -13,6 +13,9 @@ import {
   syncPendingTransactions
 } from '@/lib/offlineClient'
 import { playSuccessSound, playFailSound } from '@/lib/sounds'
+import { isNativePlatform } from '@/lib/capacitor'
+import { receiptToEscPos } from '@/lib/escpos'
+import BluetoothPrinterPanel from '@/components/BluetoothPrinterPanel'
 import StatusCard from '@/components/StatusCard'
 import type { GateStatus, ScanLog, TicketStats, TicketType } from '@/lib/types'
 
@@ -110,6 +113,12 @@ export default function KasirPage() {
   const [todaySummary, setTodaySummary] = useState<{ transactionCount: number; revenue: number }>({ transactionCount: 0, revenue: 0 })
   const [scanBreakdown, setScanBreakdown] = useState<{ ticketType: string; count: number; price: number; totalRevenue: number; percentage: number }[]>([])
   const [todayTransactions, setTodayTransactions] = useState<{ transactionId: string; createdAt: string; ticketType: string; quantity: number; price: number; total: number; cashier: string; paymentMethod: string }[]>([])
+  const [btDevices, setBtDevices] = useState<{ name: string; address: string }[]>([])
+  const [btConnected, setBtConnected] = useState(false)
+  const [btAddress, setBtAddress] = useState<string | null>(null)
+  const [btDeviceName, setBtDeviceName] = useState<string | null>(null)
+  const [btScanning, setBtScanning] = useState(false)
+  const [btPrinting, setBtPrinting] = useState(false)
   const [gateLoading, setGateLoading] = useState<string | null>(null)
   const [gateFeedback, setGateFeedback] = useState<{ gateId: string; ok: boolean; msg: string } | null>(null)
   const [gateUid, setGateUid] = useState('')
@@ -456,8 +465,31 @@ export default function KasirPage() {
     }
   }
 
-  const handlePrintReceipt = () => {
+  const handlePrintReceipt = async () => {
     if (!receipt) return
+
+    if (isNativePlatform()) {
+      setBtPrinting(true)
+      try {
+        const BluetoothPrinter = (await import('@/lib/bluetoothPrinter')).default
+        const { connected } = await BluetoothPrinter.isConnected()
+        if (!connected) {
+          alert('Bluetooth printer belum terhubung. Hubungkan printer dahulu di menu Bluetooth Printer.')
+          setBtPrinting(false)
+          return
+        }
+        const data = receiptToEscPos(receipt, { charPerLine: 32 })
+        await BluetoothPrinter.printEscPos({ data })
+        playSuccessSound()
+      } catch (err: any) {
+        playFailSound()
+        alert('Gagal mencetak via Bluetooth: ' + (err?.message || 'unknown error'))
+      } finally {
+        setBtPrinting(false)
+      }
+      return
+    }
+
     const styleContent = `
       * { box-sizing: border-box; margin: 0; padding: 0; }
       @page {
@@ -654,6 +686,20 @@ export default function KasirPage() {
                     </button>
                   </div>
                 ) : null}
+
+                <BluetoothPrinterPanel
+                  btConnected={btConnected}
+                  btDeviceName={btDeviceName}
+                  btDevices={btDevices}
+                  btScanning={btScanning}
+                  onDevicesChange={setBtDevices}
+                  onConnectedChange={(connected, address, name) => {
+                    setBtConnected(connected)
+                    setBtAddress(address)
+                    setBtDeviceName(name)
+                  }}
+                  onScanningChange={setBtScanning}
+                />
 
                 <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-card max-w-md">
                   <h2 className="text-base font-semibold text-slate-900 mb-5">Buat Transaksi</h2>

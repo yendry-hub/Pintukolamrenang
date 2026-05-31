@@ -9,3 +9,14 @@ yarn-debug.log*
 yarn-error.log*
 
 hardware/**/build/
+
+# Capacitor / Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/capacitor-cordova-android-plugins/
+android/capacitor.settings.gradle
+*.apk
+*.aab
+*.keystore
