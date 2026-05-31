@@ -45,6 +45,25 @@ function ensureTicketType(value: unknown): TicketType {
   return allowed.includes(ticketType) ? ticketType : 'Tiket Harian'
 }
 
+interface ScanBreakdownItem {
+  ticketType: string
+  count: number
+  price: number
+  totalRevenue: number
+  percentage: number
+}
+
+interface TransactionDetail {
+  transactionId: string
+  createdAt: string
+  ticketType: string
+  quantity: number
+  price: number
+  total: number
+  cashier: string
+  paymentMethod: string
+}
+
 async function authorizeCashier(token: string) {
   const decoded = await admin.auth().verifyIdToken(token)
   const userDoc = await admin.firestore().collection('users').doc(decoded.uid).get()
@@ -135,6 +154,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Fetch today's transaction summary (WIB timezone)
     let todayTransactionCount = 0
     let todayRevenue = 0
+    let todayTransactions: any[] = []
     try {
       const todayTransactionsSnap = await db
         .collection('transactions')
@@ -145,11 +165,52 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       todayTransactionsSnap.forEach((doc) => {
         const data = doc.data()
         todayTransactionCount++
-        todayRevenue += Number(data.total) || Number(data.price) * Number(data.quantity || 1) || 0
+        const total = Number(data.total) || Number(data.price) * Number(data.quantity || 1) || 0
+        todayRevenue += total
+        todayTransactions.push({
+          transactionId: String(data.transactionId || doc.id),
+          createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date(data.createdAt).toISOString(),
+          ticketType: String(data.ticketType || 'Unknown'),
+          quantity: Number(data.quantity) || 1,
+          price: Number(data.price) || 0,
+          total,
+          cashier: String(data.cashier || ''),
+          paymentMethod: String(data.paymentMethod || ''),
+        })
       })
     } catch (txErr) {
       console.error('Failed to fetch transactions (index may be missing):', txErr)
     }
+
+    // Group today's scans by ticket type
+    const scanGroupMap: Record<string, { count: number; rawDocs: any[] }> = {}
+    scanLogsSnap.docs.forEach((doc) => {
+      const d = doc.data() as Record<string, any>
+      const tt = String(d.ticketType || 'Unknown')
+      if (!scanGroupMap[tt]) scanGroupMap[tt] = { count: 0, rawDocs: [] }
+      scanGroupMap[tt].count++
+      scanGroupMap[tt].rawDocs.push(d)
+    })
+
+    // Fetch ticket prices for price lookup
+    let prices: Record<string, number> = {}
+    try {
+      const priceDoc = await db.collection('settings').doc('ticket-prices').get()
+      if (priceDoc.exists) prices = priceDoc.data() as Record<string, number>
+    } catch { /* ignore */ }
+
+    const totalScans = scanLogsSnap.size
+    const scanBreakdown: ScanBreakdownItem[] = Object.entries(scanGroupMap).map(([ticketType, data]) => {
+      const price = prices[ticketType] || 0
+      const totalRevenue = price * data.count
+      return {
+        ticketType,
+        count: data.count,
+        price,
+        totalRevenue,
+        percentage: totalScans > 0 ? Math.round((data.count / totalScans) * 100 * 100) / 100 : 0
+      }
+    })
 
     const stats: TicketStats = {
       totalVisitorsToday,
@@ -162,6 +223,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       status,
       stats,
       recentScans,
+      scanBreakdown,
+      todayTransactions,
       todaySummary: {
         transactionCount: todayTransactionCount,
         revenue: todayRevenue

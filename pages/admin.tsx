@@ -905,18 +905,76 @@ export default function AdminPage() {
                       <h2 className="text-base font-semibold text-slate-900">Laporan Penjualan Tiket</h2>
                       <p className="text-sm text-slate-400">Ringkasan pendapatan dan volume tiket</p>
                     </div>
-                    <div className="flex bg-slate-100 p-0.5 rounded-lg">
-                      {(['today', 'week', 'month', 'all'] as const).map((f) => (
+                    <div className="flex items-center gap-2">
+                      <div className="flex bg-slate-100 p-0.5 rounded-lg">
+                        {(['today', 'week', 'month', 'all'] as const).map((f) => (
+                          <button
+                            key={f}
+                            onClick={() => setReportFilter(f)}
+                            className={`px-3.5 py-1.5 text-xs font-medium rounded-md transition-all ${
+                              reportFilter === f ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
+                            }`}
+                          >
+                            {f === 'today' ? 'Hari Ini' : f === 'week' ? 'Minggu Ini' : f === 'month' ? 'Bulan' : 'Semua'}
+                          </button>
+                        ))}
+                      </div>
+                      {salesReport && (
                         <button
-                          key={f}
-                          onClick={() => setReportFilter(f)}
-                          className={`px-3.5 py-1.5 text-xs font-medium rounded-md transition-all ${
-                            reportFilter === f ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
-                          }`}
+                          onClick={() => {
+                            const w = window.open('', '', 'width=800,height=600')
+                            if (!w) return
+                            const r = salesReport
+                            const rows = r.transactions?.map((tx: any) => `
+                              <tr>
+                                <td style="padding:6px 8px;font-size:12px;border-bottom:1px solid #e2e8f0">${tx.transactionId?.slice(0, 12)}</td>
+                                <td style="padding:6px 8px;font-size:12px;border-bottom:1px solid #e2e8f0">${new Date(tx.createdAt).toLocaleDateString('id-ID')} ${new Date(tx.createdAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</td>
+                                <td style="padding:6px 8px;font-size:12px;border-bottom:1px solid #e2e8f0">${tx.ticketType} x${tx.quantity}</td>
+                                <td style="padding:6px 8px;font-size:12px;text-align:right;border-bottom:1px solid #e2e8f0">Rp ${tx.total.toLocaleString('id-ID')}</td>
+                                <td style="padding:6px 8px;font-size:12px;border-bottom:1px solid #e2e8f0">${tx.cashier || '-'}</td>
+                              </tr>`).join('') || ''
+                            const breakdownRows = r.ticketTypeBreakdown?.map((b: any) => `
+                              <tr>
+                                <td style="padding:6px 8px;font-size:12px;border-bottom:1px solid #e2e8f0">${b.ticketType}</td>
+                                <td style="padding:6px 8px;font-size:12px;text-align:right;border-bottom:1px solid #e2e8f0">${b.quantity}</td>
+                                <td style="padding:6px 8px;font-size:12px;text-align:right;border-bottom:1px solid #e2e8f0">Rp ${b.revenue.toLocaleString('id-ID')}</td>
+                              </tr>`).join('') || ''
+                            w.document.write(`<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"><title>Laporan Penjualan</title><style>
+                              *{margin:0;padding:0;box-sizing:border-box}
+                              body{font-family:system-ui,-apple-system,sans-serif;padding:32px;color:#1e293b}
+                              h1{font-size:20px;margin-bottom:4px}
+                              .sub{color:#64748b;font-size:13px;margin-bottom:24px}
+                              .cards{display:flex;gap:16px;margin-bottom:24px}
+                              .card{border:1px solid #e2e8f0;border-radius:12px;padding:16px;flex:1}
+                              .card .label{font-size:10px;text-transform:uppercase;color:#64748b;font-weight:600;letter-spacing:.05em}
+                              .card .value{font-size:22px;font-weight:700;margin-top:4px}
+                              table{border-collapse:collapse;width:100%;margin-top:16px}
+                              th{text-align:left;padding:8px;font-size:10px;text-transform:uppercase;color:#64748b;font-weight:600;border-bottom:2px solid #e2e8f0;letter-spacing:.05em}
+                              th.right{text-align:right}
+                              h2{font-size:14px;margin-top:24px;margin-bottom:8px;color:#1e293b}
+                              @media print{body{padding:16px}button{display:none}}
+                            </style></head><body>
+                            <h1>Laporan Penjualan Tiket</h1>
+                            <p class="sub">Periode: ${new Date(r.startDate).toLocaleDateString('id-ID')} — ${new Date(r.generatedAt).toLocaleDateString('id-ID')} (${r.filter === 'today' ? 'Hari Ini' : r.filter === 'week' ? 'Minggu Ini' : r.filter === 'month' ? 'Bulan' : 'Semua'})</p>
+                            <div class="cards">
+                              <div class="card"><div class="label">Total Pendapatan</div><div class="value" style="color:#0284c7">Rp ${r.summary.totalRevenue.toLocaleString('id-ID')}</div></div>
+                              <div class="card"><div class="label">Tiket Terjual</div><div class="value" style="color:#059669">${r.summary.totalQuantity} Tiket</div></div>
+                              <div class="card"><div class="label">Jumlah Transaksi</div><div class="value" style="color:#d97706">${r.summary.totalTransactions}</div></div>
+                            </div>
+                            ${r.ticketTypeBreakdown?.length ? `<h2>Rincian per Tipe Tiket</h2>
+                            <table><thead><tr><th>Tipe Tiket</th><th class="right">Jumlah</th><th class="right">Pendapatan</th></tr></thead><tbody>${breakdownRows}</tbody></table>` : ''}
+                            ${r.transactions?.length ? `<h2>Detail Transaksi</h2>
+                            <table><thead><tr><th>ID</th><th>Tanggal</th><th>Tiket</th><th class="right">Total</th><th>Kasir</th></tr></thead><tbody>${rows}</tbody></table>` : ''}
+                            <p style="margin-top:32px;font-size:11px;color:#94a3b8;text-align:center">Dicetak ${new Date().toLocaleString('id-ID')}</p>
+                            <button onclick="window.print()" style="position:fixed;bottom:24px;right:24px;padding:12px 24px;background:#0284c7;color:#fff;border:0;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(2,132,199,.4)">Cetak / PDF</button>
+                            </body></html>`)
+                            w.document.close()
+                          }}
+                          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition-all hover:border-slate-300 active:scale-[0.97]"
                         >
-                          {f === 'today' ? 'Hari Ini' : f === 'week' ? 'Minggu Ini' : f === 'month' ? 'Bulan' : 'Semua'}
+                          Export PDF
                         </button>
-                      ))}
+                      )}
                     </div>
                   </div>
 
@@ -1007,18 +1065,68 @@ export default function AdminPage() {
                       <h2 className="text-base font-semibold text-slate-900">Laporan Pengunjung</h2>
                       <p className="text-sm text-slate-400">Jumlah pengunjung berdasarkan jenis tiket</p>
                     </div>
-                    <div className="flex bg-slate-100 p-0.5 rounded-lg">
-                      {(['today', 'week', 'month', 'all'] as const).map((f) => (
+                    <div className="flex items-center gap-2">
+                      <div className="flex bg-slate-100 p-0.5 rounded-lg">
+                        {(['today', 'week', 'month', 'all'] as const).map((f) => (
+                          <button
+                            key={f}
+                            onClick={() => setVisitorReportFilter(f)}
+                            className={`px-3.5 py-1.5 text-xs font-medium rounded-md transition-all ${
+                              visitorReportFilter === f ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
+                            }`}
+                          >
+                            {f === 'today' ? 'Hari Ini' : f === 'week' ? 'Minggu Ini' : f === 'month' ? 'Bulan' : 'Semua'}
+                          </button>
+                        ))}
+                      </div>
+                      {visitorReport && (
                         <button
-                          key={f}
-                          onClick={() => setVisitorReportFilter(f)}
-                          className={`px-3.5 py-1.5 text-xs font-medium rounded-md transition-all ${
-                            visitorReportFilter === f ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
-                          }`}
+                          onClick={() => {
+                            const w = window.open('', '', 'width=800,height=600')
+                            if (!w) return
+                            const r = visitorReport
+                            const breakdownRows = r.breakdown?.map((b: any) => `
+                              <tr>
+                                <td style="padding:6px 8px;font-size:12px;border-bottom:1px solid #e2e8f0">${b.ticketType}</td>
+                                <td style="padding:6px 8px;font-size:12px;text-align:right;border-bottom:1px solid #e2e8f0">${b.count}</td>
+                                <td style="padding:6px 8px;font-size:12px;text-align:right;border-bottom:1px solid #e2e8f0">Rp ${b.price.toLocaleString('id-ID')}</td>
+                                <td style="padding:6px 8px;font-size:12px;text-align:right;border-bottom:1px solid #e2e8f0">Rp ${b.totalRevenue.toLocaleString('id-ID')}</td>
+                                <td style="padding:6px 8px;font-size:12px;text-align:right;border-bottom:1px solid #e2e8f0">${b.percentage}%</td>
+                              </tr>`).join('') || ''
+                            w.document.write(`<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"><title>Laporan Pengunjung</title><style>
+                              *{margin:0;padding:0;box-sizing:border-box}
+                              body{font-family:system-ui,-apple-system,sans-serif;padding:32px;color:#1e293b}
+                              h1{font-size:20px;margin-bottom:4px}
+                              .sub{color:#64748b;font-size:13px;margin-bottom:24px}
+                              .cards{display:flex;gap:16px;margin-bottom:24px}
+                              .card{border:1px solid #e2e8f0;border-radius:12px;padding:16px;flex:1}
+                              .card .label{font-size:10px;text-transform:uppercase;color:#64748b;font-weight:600;letter-spacing:.05em}
+                              .card .value{font-size:22px;font-weight:700;margin-top:4px}
+                              table{border-collapse:collapse;width:100%;margin-top:16px}
+                              th{text-align:left;padding:8px;font-size:10px;text-transform:uppercase;color:#64748b;font-weight:600;border-bottom:2px solid #e2e8f0;letter-spacing:.05em}
+                              th.right{text-align:right}
+                              h2{font-size:14px;margin-top:24px;margin-bottom:8px;color:#1e293b}
+                              @media print{body{padding:16px}button{display:none}}
+                            </style></head><body>
+                            <h1>Laporan Pengunjung</h1>
+                            <p class="sub">Periode: ${new Date(r.startDate).toLocaleDateString('id-ID')} — ${new Date(r.endDate).toLocaleDateString('id-ID')} (${r.filter === 'today' ? 'Hari Ini' : r.filter === 'week' ? 'Minggu Ini' : r.filter === 'month' ? 'Bulan' : 'Semua'})</p>
+                            <div class="cards">
+                              <div class="card"><div class="label">Total Pengunjung</div><div class="value" style="color:#0284c7">${r.summary.totalVisitors}</div></div>
+                              <div class="card"><div class="label">Jenis Tiket</div><div class="value" style="color:#059669">${r.breakdown.length}</div></div>
+                              <div class="card"><div class="label">Total Pendapatan</div><div class="value" style="color:#d97706">Rp ${(r.summary.grandTotal || 0).toLocaleString('id-ID')}</div></div>
+                            </div>
+                            <h2>Rincian per Jenis Tiket</h2>
+                            <table><thead><tr><th>Jenis Tiket</th><th class="right">Jumlah</th><th class="right">Harga</th><th class="right">Total</th><th class="right">%</th></tr></thead><tbody>${breakdownRows}</tbody></table>
+                            <p style="margin-top:32px;font-size:11px;color:#94a3b8;text-align:center">Dicetak ${new Date().toLocaleString('id-ID')}</p>
+                            <button onclick="window.print()" style="position:fixed;bottom:24px;right:24px;padding:12px 24px;background:#0284c7;color:#fff;border:0;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(2,132,199,.4)">Cetak / PDF</button>
+                            </body></html>`)
+                            w.document.close()
+                          }}
+                          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition-all hover:border-slate-300 active:scale-[0.97]"
                         >
-                          {f === 'today' ? 'Hari Ini' : f === 'week' ? 'Minggu Ini' : f === 'month' ? 'Bulan' : 'Semua'}
+                          Export PDF
                         </button>
-                      ))}
+                      )}
                     </div>
                   </div>
 
@@ -1036,12 +1144,12 @@ export default function AdminPage() {
                           <p className="mt-1 text-2xl font-bold text-emerald-900">{visitorReport.breakdown.length}</p>
                         </div>
                         <div className="rounded-xl bg-indigo-50 border border-indigo-100 p-4">
-                          <p className="text-[10px] font-semibold text-indigo-600 uppercase tracking-wider">Periode Mulai</p>
-                          <p className="mt-1 text-lg font-bold text-indigo-900">{new Date(visitorReport.startDate).toLocaleDateString('id-ID')}</p>
+                          <p className="text-[10px] font-semibold text-indigo-600 uppercase tracking-wider">Periode</p>
+                          <p className="mt-1 text-lg font-bold text-indigo-900">{new Date(visitorReport.startDate).toLocaleDateString('id-ID')} — {new Date(visitorReport.endDate).toLocaleDateString('id-ID')}</p>
                         </div>
                         <div className="rounded-xl bg-amber-50 border border-amber-100 p-4">
-                          <p className="text-[10px] font-semibold text-amber-600 uppercase tracking-wider">Periode Selesai</p>
-                          <p className="mt-1 text-lg font-bold text-amber-900">{new Date(visitorReport.endDate).toLocaleDateString('id-ID')}</p>
+                          <p className="text-[10px] font-semibold text-amber-600 uppercase tracking-wider">Total Pendapatan</p>
+                          <p className="mt-1 text-2xl font-bold text-amber-900">Rp {(visitorReport.summary.grandTotal || 0).toLocaleString('id-ID')}</p>
                         </div>
                       </div>
 
@@ -1052,6 +1160,8 @@ export default function AdminPage() {
                               <tr className="border-b border-slate-100">
                                 <th className="text-left py-2.5 px-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Jenis Tiket</th>
                                 <th className="text-right py-2.5 px-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Jumlah</th>
+                                <th className="text-right py-2.5 px-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Harga Tiket</th>
+                                <th className="text-right py-2.5 px-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Total</th>
                                 <th className="text-right py-2.5 px-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Persentase</th>
                               </tr>
                             </thead>
@@ -1060,6 +1170,8 @@ export default function AdminPage() {
                                 <tr key={index} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
                                   <td className="py-2.5 px-3 text-slate-700 font-medium">{item.ticketType}</td>
                                   <td className="py-2.5 px-3 text-right text-slate-600">{item.count}</td>
+                                  <td className="py-2.5 px-3 text-right text-slate-600">Rp {item.price.toLocaleString('id-ID')}</td>
+                                  <td className="py-2.5 px-3 text-right font-medium text-slate-700">Rp {item.totalRevenue.toLocaleString('id-ID')}</td>
                                   <td className="py-2.5 px-3 text-right text-slate-600">
                                     <span className="inline-flex items-center gap-1.5">
                                       <div className="w-20 h-1.5 rounded-full bg-slate-100 overflow-hidden">
@@ -1074,6 +1186,15 @@ export default function AdminPage() {
                                 </tr>
                               ))}
                             </tbody>
+                            <tfoot>
+                              <tr className="border-t-2 border-slate-200 bg-slate-50/50">
+                                <td className="py-3 px-3 text-sm font-semibold text-slate-800">Total</td>
+                                <td className="py-3 px-3 text-right text-sm font-semibold text-slate-800">{visitorReport.summary.totalVisitors}</td>
+                                <td className="py-3 px-3 text-right text-sm text-slate-500">—</td>
+                                <td className="py-3 px-3 text-right text-sm font-bold text-sky-700">Rp {(visitorReport.summary.grandTotal || 0).toLocaleString('id-ID')}</td>
+                                <td className="py-3 px-3"></td>
+                              </tr>
+                            </tfoot>
                           </table>
                         </div>
                       )}

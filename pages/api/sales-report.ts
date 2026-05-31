@@ -78,6 +78,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Process transactions to generate report
     const salesMap: Record<string, { quantity: number; totalRevenue: number; prices: number[] }> = {}
+    const transactions: any[] = []
 
     transactionsSnap.forEach((doc) => {
       const data = doc.data() as any
@@ -96,6 +97,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       salesMap[ticketType].quantity += quantity
       salesMap[ticketType].totalRevenue += total
       salesMap[ticketType].prices.push(data.price || 0)
+
+      transactions.push({
+        transactionId: String(data.transactionId || doc.id),
+        createdAt: createdAt.toISOString(),
+        ticketType,
+        quantity,
+        price: Number(data.price) || 0,
+        total,
+        cashier: String(data.cashier || ''),
+        paymentMethod: String(data.paymentMethod || ''),
+      })
     })
 
     // Convert to report format
@@ -121,7 +133,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         totalQuantity,
         totalRevenue
       },
-      details: salesReport
+      details: salesReport,
+      transactions,
     })
   } catch (error: any) {
     console.error('Error generating sales report:', error)

@@ -40,6 +40,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const filter = (req.query.filter as string) || 'today'
   const { start, end } = getDateRange(filter)
 
+  // Fetch current ticket prices
+  let prices: Record<string, number> = {}
+  try {
+    const pricesSnap = await db.collection('settings').doc('ticket-prices').get()
+    if (pricesSnap.exists) prices = pricesSnap.data()?.prices || {}
+  } catch {}
+
   const snapshot = await db
     .collection('scanLogs')
     .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(start))
@@ -60,13 +67,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   })
 
   const total = scanLogs.length
+  let grandTotal = 0
   const breakdown = Object.entries(groups)
-    .map(([ticketType, info]) => ({
-      ticketType,
-      count: info.count,
-      percentage: total > 0 ? Math.round((info.count / total) * 100) : 0,
-      items: info.items,
-    }))
+    .map(([ticketType, info]) => {
+      const price = prices[ticketType] || 0
+      const totalRevenue = info.count * price
+      grandTotal += totalRevenue
+      return {
+        ticketType,
+        count: info.count,
+        price,
+        totalRevenue,
+        percentage: total > 0 ? Math.round((info.count / total) * 100) : 0,
+        items: info.items,
+      }
+    })
     .sort((a, b) => b.count - a.count)
 
   return res.status(200).json({
@@ -74,7 +89,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     startDate: start.toISOString(),
     endDate: end.toISOString(),
     generatedAt: new Date().toISOString(),
-    summary: { totalVisitors: total },
+    summary: { totalVisitors: total, grandTotal },
     breakdown,
   })
 }

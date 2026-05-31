@@ -20,6 +20,23 @@ type KasirDashboardResponse = {
   status: GateStatus
   stats: TicketStats
   recentScans: ScanLog[]
+  scanBreakdown: {
+    ticketType: string
+    count: number
+    price: number
+    totalRevenue: number
+    percentage: number
+  }[]
+  todayTransactions: {
+    transactionId: string
+    createdAt: string
+    ticketType: string
+    quantity: number
+    price: number
+    total: number
+    cashier: string
+    paymentMethod: string
+  }[]
   todaySummary?: {
     transactionCount: number
     revenue: number
@@ -91,6 +108,8 @@ export default function KasirPage() {
   const [ticketTypes, setTicketTypes] = useState<string[]>([])
   const [paymentMethods, setPaymentMethods] = useState<string[]>([])
   const [todaySummary, setTodaySummary] = useState<{ transactionCount: number; revenue: number }>({ transactionCount: 0, revenue: 0 })
+  const [scanBreakdown, setScanBreakdown] = useState<{ ticketType: string; count: number; price: number; totalRevenue: number; percentage: number }[]>([])
+  const [todayTransactions, setTodayTransactions] = useState<{ transactionId: string; createdAt: string; ticketType: string; quantity: number; price: number; total: number; cashier: string; paymentMethod: string }[]>([])
   const [gateLoading, setGateLoading] = useState<string | null>(null)
   const [gateFeedback, setGateFeedback] = useState<{ gateId: string; ok: boolean; msg: string } | null>(null)
   const [gateUid, setGateUid] = useState('')
@@ -343,6 +362,8 @@ export default function KasirPage() {
       setStats(payload.stats)
       setRecentScans(payload.recentScans)
       if (payload.todaySummary) setTodaySummary(payload.todaySummary)
+      if (payload.scanBreakdown) setScanBreakdown(payload.scanBreakdown)
+      if (payload.todayTransactions) setTodayTransactions(payload.todayTransactions)
       cacheJson('kasirDashboard', payload)
     } catch (err: any) {
       const cachedDashboard = getCachedJson<KasirDashboardResponse>('kasirDashboard')
@@ -350,6 +371,9 @@ export default function KasirPage() {
         setStatus(cachedDashboard.status)
         setStats(cachedDashboard.stats)
         setRecentScans(cachedDashboard.recentScans)
+        if (cachedDashboard.todaySummary) setTodaySummary(cachedDashboard.todaySummary)
+        if (cachedDashboard.scanBreakdown) setScanBreakdown(cachedDashboard.scanBreakdown)
+        if (cachedDashboard.todayTransactions) setTodayTransactions(cachedDashboard.todayTransactions)
         setOfflineMode(true)
         setError('Mode offline aktif. Data dashboard memakai cache terakhir.')
       } else {
@@ -700,18 +724,80 @@ export default function KasirPage() {
             )}
 
             {view === 'ringkasan' && (
-              <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-card max-w-lg">
+              <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-card">
                 <div className="flex items-center justify-between mb-5">
                   <h2 className="text-base font-semibold text-slate-900">Ringkasan Kasir</h2>
-                  <button
-                    onClick={fetchDashboard}
-                    disabled={loading}
-                    className="rounded-xl bg-sky-600 px-4 py-2 text-xs font-medium text-white shadow-card transition-all hover:bg-sky-700 active:scale-[0.97] disabled:opacity-50"
-                  >
-                    {loading ? 'Memuat...' : 'Refresh'}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        const w = window.open('', '', 'width=800,height=600')
+                        if (!w) return
+                        const scanRows = scanBreakdown.map((b) => `
+                          <tr>
+                            <td style="padding:6px 8px;font-size:12px;border-bottom:1px solid #e2e8f0">${b.ticketType}</td>
+                            <td style="padding:6px 8px;font-size:12px;text-align:right;border-bottom:1px solid #e2e8f0">${b.count}</td>
+                            <td style="padding:6px 8px;font-size:12px;text-align:right;border-bottom:1px solid #e2e8f0">Rp ${b.price.toLocaleString('id-ID')}</td>
+                            <td style="padding:6px 8px;font-size:12px;text-align:right;border-bottom:1px solid #e2e8f0">Rp ${b.totalRevenue.toLocaleString('id-ID')}</td>
+                          </tr>`).join('') || ''
+                        const scanGrandTotal = scanBreakdown.reduce((s, b) => s + b.totalRevenue, 0)
+                        const txRows = todayTransactions.map((t) => `
+                          <tr>
+                            <td style="padding:6px 8px;font-size:12px;border-bottom:1px solid #e2e8f0">${new Date(t.createdAt).toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' })}</td>
+                            <td style="padding:6px 8px;font-size:12px;border-bottom:1px solid #e2e8f0">${t.ticketType}</td>
+                            <td style="padding:6px 8px;font-size:12px;text-align:right;border-bottom:1px solid #e2e8f0">${t.quantity}</td>
+                            <td style="padding:6px 8px;font-size:12px;text-align:right;border-bottom:1px solid #e2e8f0">Rp ${t.price.toLocaleString('id-ID')}</td>
+                            <td style="padding:6px 8px;font-size:12px;text-align:right;border-bottom:1px solid #e2e8f0">Rp ${t.total.toLocaleString('id-ID')}</td>
+                            <td style="padding:6px 8px;font-size:12px;border-bottom:1px solid #e2e8f0">${t.paymentMethod}</td>
+                          </tr>`).join('') || ''
+                        const txGrandTotal = todayTransactions.reduce((s, t) => s + t.total, 0)
+                        w.document.write(`<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"><title>Ringkasan Kasir</title><style>
+                          *{margin:0;padding:0;box-sizing:border-box}
+                          body{font-family:system-ui,-apple-system,sans-serif;padding:32px;color:#1e293b}
+                          h1{font-size:20px;margin-bottom:4px}
+                          .sub{color:#64748b;font-size:13px;margin-bottom:24px}
+                          .cards{display:flex;gap:16px;margin-bottom:24px}
+                          .card{border:1px solid #e2e8f0;border-radius:12px;padding:16px;flex:1}
+                          .card .label{font-size:10px;text-transform:uppercase;color:#64748b;font-weight:600;letter-spacing:.05em}
+                          .card .value{font-size:22px;font-weight:700;margin-top:4px}
+                          table{border-collapse:collapse;width:100%;margin-top:16px}
+                          th{text-align:left;padding:8px;font-size:10px;text-transform:uppercase;color:#64748b;font-weight:600;border-bottom:2px solid #e2e8f0;letter-spacing:.05em}
+                          th.right{text-align:right}
+                          h2{font-size:14px;margin-top:24px;margin-bottom:8px;color:#1e293b}
+                          @media print{body{padding:16px}button{display:none}}
+                        </style></head><body>
+                        <h1>Ringkasan Kasir</h1>
+                        <p class="sub">${new Date().toLocaleDateString('id-ID', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}</p>
+                        <div class="cards">
+                          <div class="card"><div class="label">Transaksi Hari Ini</div><div class="value" style="color:#0284c7">${todaySummary.transactionCount}</div></div>
+                          <div class="card"><div class="label">Pendapatan Hari Ini</div><div class="value" style="color:#059669">Rp ${todaySummary.revenue.toLocaleString('id-ID')}</div></div>
+                          <div class="card"><div class="label">Total Scan</div><div class="value" style="color:#d97706">${recentScans.length}</div></div>
+                          <div class="card"><div class="label">Anggota Aktif</div><div class="value" style="color:#6366f1">${stats.activeMembers}</div></div>
+                        </div>
+                        <h2>Scan per Jenis Tiket</h2>
+                        <table><thead><tr><th>Jenis Tiket</th><th class="right">Jumlah</th><th class="right">Harga</th><th class="right">Total</th></tr></thead><tbody>${scanRows}</tbody>
+                        <tfoot><tr><td style="padding:8px;font-size:12px;font-weight:700;border-top:2px solid #1e293b">Grand Total Scan</td><td style="padding:8px;font-size:12px;font-weight:700;text-align:right;border-top:2px solid #1e293b">${scanBreakdown.reduce((s,b) => s + b.count, 0)}</td><td style="padding:8px;font-size:12px;font-weight:700;text-align:right;border-top:2px solid #1e293b"></td><td style="padding:8px;font-size:12px;font-weight:700;text-align:right;border-top:2px solid #1e293b">Rp ${scanGrandTotal.toLocaleString('id-ID')}</td></tr></tfoot></table>
+                        <h2>Transaksi Penjualan Tiket</h2>
+                        <table><thead><tr><th>Jam</th><th>Jenis Tiket</th><th class="right">Qty</th><th class="right">Harga</th><th class="right">Total</th><th>Pembayaran</th></tr></thead><tbody>${txRows}</tbody>
+                        <tfoot><tr><td style="padding:8px;font-size:12px;font-weight:700;border-top:2px solid #1e293b" colspan="2">Grand Total Transaksi</td><td style="padding:8px;font-size:12px;font-weight:700;text-align:right;border-top:2px solid #1e293b">${todayTransactions.reduce((s,t) => s + t.quantity, 0)}</td><td style="padding:8px;font-size:12px;font-weight:700;text-align:right;border-top:2px solid #1e293b"></td><td style="padding:8px;font-size:12px;font-weight:700;text-align:right;border-top:2px solid #1e293b">Rp ${txGrandTotal.toLocaleString('id-ID')}</td><td style="padding:8px;font-size:12px;font-weight:700;border-top:2px solid #1e293b"></td></tr></tfoot></table>
+                        <p style="margin-top:32px;font-size:11px;color:#94a3b8;text-align:center">Dicetak ${new Date().toLocaleString('id-ID')}</p>
+                        <button onclick="window.print()" style="position:fixed;bottom:24px;right:24px;padding:12px 24px;background:#0284c7;color:#fff;border:0;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(2,132,199,.4)">Cetak / PDF</button>
+                        </body></html>`)
+                        w.document.close()
+                      }}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition-all hover:border-slate-300 active:scale-[0.97]"
+                    >
+                      Export PDF
+                    </button>
+                    <button
+                      onClick={fetchDashboard}
+                      disabled={loading}
+                      className="rounded-xl bg-sky-600 px-4 py-2 text-xs font-medium text-white shadow-card transition-all hover:bg-sky-700 active:scale-[0.97] disabled:opacity-50"
+                    >
+                      {loading ? 'Memuat...' : 'Refresh'}
+                    </button>
+                  </div>
                 </div>
-                <div className="grid gap-4 sm:grid-cols-2 mb-5">
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-5">
                   <div className="rounded-xl bg-sky-50 border border-sky-100 p-4">
                     <p className="text-[10px] font-semibold text-sky-600 uppercase tracking-wider">Transaksi Hari Ini</p>
                     <p className="mt-1 text-2xl font-bold text-sky-900">{todaySummary.transactionCount}</p>
@@ -720,17 +806,99 @@ export default function KasirPage() {
                     <p className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wider">Pendapatan Hari Ini</p>
                     <p className="mt-1 text-2xl font-bold text-emerald-900">Rp {todaySummary.revenue.toLocaleString('id-ID')}</p>
                   </div>
-                </div>
-                <div className="space-y-2 text-sm text-slate-500">
-                  <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3.5 py-2.5">
-                    <span>Total Scan</span>
-                    <span className="font-semibold text-slate-700">{recentScans.length}</span>
+                  <div className="rounded-xl bg-amber-50 border border-amber-100 p-4">
+                    <p className="text-[10px] font-semibold text-amber-600 uppercase tracking-wider">Total Scan Hari Ini</p>
+                    <p className="mt-1 text-2xl font-bold text-amber-900">{recentScans.length}</p>
                   </div>
-                  <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3.5 py-2.5">
-                    <span>Anggota Aktif</span>
-                    <span className="font-semibold text-slate-700">{stats.activeMembers}</span>
+                  <div className="rounded-xl bg-indigo-50 border border-indigo-100 p-4">
+                    <p className="text-[10px] font-semibold text-indigo-600 uppercase tracking-wider">Anggota Aktif</p>
+                    <p className="mt-1 text-2xl font-bold text-indigo-900">{stats.activeMembers}</p>
                   </div>
                 </div>
+
+                {/* Scan Breakdown Table */}
+                {scanBreakdown.length > 0 && (
+                  <div className="mb-6">
+                    <h3 className="text-sm font-semibold text-slate-700 mb-3">Scan per Jenis Tiket</h3>
+                    <div className="overflow-x-auto rounded-xl border border-slate-100">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="bg-slate-50">
+                            <th className="text-left px-4 py-2.5 font-semibold text-slate-500">Jenis Tiket</th>
+                            <th className="text-right px-4 py-2.5 font-semibold text-slate-500">Jumlah</th>
+                            <th className="text-right px-4 py-2.5 font-semibold text-slate-500">Harga Tiket</th>
+                            <th className="text-right px-4 py-2.5 font-semibold text-slate-500">Total</th>
+                            <th className="text-right px-4 py-2.5 font-semibold text-slate-500">%</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {scanBreakdown.map((b) => (
+                            <tr key={b.ticketType} className="border-t border-slate-100 hover:bg-slate-50 transition-colors">
+                              <td className="px-4 py-2.5 font-medium text-slate-700">{b.ticketType}</td>
+                              <td className="px-4 py-2.5 text-right text-slate-600">{b.count}</td>
+                              <td className="px-4 py-2.5 text-right text-slate-600">Rp {b.price.toLocaleString('id-ID')}</td>
+                              <td className="px-4 py-2.5 text-right font-medium text-slate-700">Rp {b.totalRevenue.toLocaleString('id-ID')}</td>
+                              <td className="px-4 py-2.5 text-right text-slate-500">{b.percentage}%</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="border-t-2 border-slate-200 bg-slate-50/50">
+                            <td className="px-4 py-2.5 font-bold text-slate-800">Grand Total Scan</td>
+                            <td className="px-4 py-2.5 text-right font-bold text-slate-800">{scanBreakdown.reduce((s, b) => s + b.count, 0)}</td>
+                            <td className="px-4 py-2.5"></td>
+                            <td className="px-4 py-2.5 text-right font-bold text-slate-800">Rp {scanBreakdown.reduce((s, b) => s + b.totalRevenue, 0).toLocaleString('id-ID')}</td>
+                            <td className="px-4 py-2.5"></td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Transaction Details Table */}
+                {todayTransactions.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-700 mb-3">Transaksi Penjualan Tiket</h3>
+                    <div className="overflow-x-auto rounded-xl border border-slate-100">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="bg-slate-50">
+                            <th className="text-left px-4 py-2.5 font-semibold text-slate-500">Jam</th>
+                            <th className="text-left px-4 py-2.5 font-semibold text-slate-500">Jenis Tiket</th>
+                            <th className="text-right px-4 py-2.5 font-semibold text-slate-500">Qty</th>
+                            <th className="text-right px-4 py-2.5 font-semibold text-slate-500">Harga</th>
+                            <th className="text-right px-4 py-2.5 font-semibold text-slate-500">Total</th>
+                            <th className="text-left px-4 py-2.5 font-semibold text-slate-500">Pembayaran</th>
+                            <th className="text-left px-4 py-2.5 font-semibold text-slate-500">Kasir</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {todayTransactions.map((t) => (
+                            <tr key={t.transactionId} className="border-t border-slate-100 hover:bg-slate-50 transition-colors">
+                              <td className="px-4 py-2.5 text-slate-600">{new Date(t.createdAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</td>
+                              <td className="px-4 py-2.5 font-medium text-slate-700">{t.ticketType}</td>
+                              <td className="px-4 py-2.5 text-right text-slate-600">{t.quantity}</td>
+                              <td className="px-4 py-2.5 text-right text-slate-600">Rp {t.price.toLocaleString('id-ID')}</td>
+                              <td className="px-4 py-2.5 text-right font-medium text-slate-700">Rp {t.total.toLocaleString('id-ID')}</td>
+                              <td className="px-4 py-2.5 text-slate-600">{t.paymentMethod}</td>
+                              <td className="px-4 py-2.5 text-slate-500">{t.cashier}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="border-t-2 border-slate-200 bg-slate-50/50">
+                            <td className="px-4 py-2.5 font-bold text-slate-800" colSpan={2}>Grand Total Transaksi</td>
+                            <td className="px-4 py-2.5 text-right font-bold text-slate-800">{todayTransactions.reduce((s, t) => s + t.quantity, 0)}</td>
+                            <td className="px-4 py-2.5"></td>
+                            <td className="px-4 py-2.5 text-right font-bold text-slate-800">Rp {todayTransactions.reduce((s, t) => s + t.total, 0).toLocaleString('id-ID')}</td>
+                            <td className="px-4 py-2.5" colSpan={2}></td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
