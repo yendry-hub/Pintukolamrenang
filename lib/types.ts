@@ -19,7 +19,7 @@ export type GateStatus = {
 
 export type ScanLog = {
   uid: string
-  ticketType: TicketType
+  ticketType: string
   gate: string
   status: 'VALID' | 'INVALID' | 'NOT_REGISTERED' | 'OFFLINE' | 'EXPIRED'
   scannedAt: string
