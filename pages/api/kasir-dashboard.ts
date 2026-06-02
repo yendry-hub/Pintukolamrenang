@@ -2,7 +2,8 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import initFirebaseAdmin from '@/lib/firebaseAdmin'
 import { getGateStatus } from '@/lib/gateDevices'
 import { getTodayStartJakarta, getTodayEndJakarta } from '@/lib/dateUtils'
-import type { GateStatus, ScanLog, TicketStats, TicketType } from '@/lib/types'
+import type { GateStatus, ScanLog, TicketStats } from '@/lib/types'
+import { normalizeTicketType } from '@/lib/ticketTypes'
 
 const admin = initFirebaseAdmin()
 
@@ -29,7 +30,7 @@ function formatScanLog(doc: FirebaseFirestore.QueryDocumentSnapshot, status: Gat
 
   return {
     uid: String(data.uid || 'Unknown'),
-    ticketType: ensureTicketType(data.ticketType),
+    ticketType: normalizeTicketType(data.ticketType || 'Unknown'),
     gate: getGateLabel(gateId, status),
     status: String(data.status || 'INVALID') as ScanLog['status'],
     scannedAt: createdAt.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' }),
@@ -37,12 +38,6 @@ function formatScanLog(doc: FirebaseFirestore.QueryDocumentSnapshot, status: Gat
       ? createdAt.toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta', day: 'numeric', month: 'short' })
       : undefined
   }
-}
-
-function ensureTicketType(value: unknown): TicketType {
-  const allowed: TicketType[] = ['Tiket Harian', 'Member', 'VIP', 'Paket Keluarga', 'Tiket Anak', 'Tiket Dewasa']
-  const ticketType = String(value) as TicketType
-  return allowed.includes(ticketType) ? ticketType : 'Tiket Harian'
 }
 
 interface ScanBreakdownItem {
@@ -170,7 +165,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         todayTransactions.push({
           transactionId: String(data.transactionId || doc.id),
           createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date(data.createdAt).toISOString(),
-          ticketType: String(data.ticketType || 'Unknown'),
+          ticketType: normalizeTicketType(data.ticketType || 'Unknown'),
           quantity: Number(data.quantity) || 1,
           price: Number(data.price) || 0,
           total,
@@ -186,7 +181,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const scanGroupMap: Record<string, { count: number; rawDocs: any[] }> = {}
     scanLogsSnap.docs.forEach((doc) => {
       const d = doc.data() as Record<string, any>
-      const tt = String(d.ticketType || 'Unknown')
+      const tt = normalizeTicketType(d.ticketType || 'Unknown')
       if (!scanGroupMap[tt]) scanGroupMap[tt] = { count: 0, rawDocs: [] }
       scanGroupMap[tt].count++
       scanGroupMap[tt].rawDocs.push(d)
