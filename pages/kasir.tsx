@@ -1028,7 +1028,7 @@ export default function KasirPage() {
                         onChange={(e) => setGateTicketType(e.target.value)}
                         className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 transition-colors focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                       >
-                        {['Manual', ...(ticketTypes.length ? ticketTypes : DEFAULT_TICKET_TYPES)].map((t) => (
+                        {[...(ticketTypes.length ? ticketTypes : DEFAULT_TICKET_TYPES)].map((t) => (
                           <option key={t} value={t}>{t}</option>
                         ))}
                       </select>
