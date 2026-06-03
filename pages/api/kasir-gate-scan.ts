@@ -34,7 +34,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const cardSnap = await cardRef.get()
       if (cardSnap.exists) {
         const card = cardSnap.data() || {}
-        scanEntry.ticketType = normalizeTicketType(card.ticketType ?? ticketType ?? 'Manual')
+        scanEntry.ticketType = normalizeTicketType(card.ticketType ?? ticketType ?? 'Tiket Harian')
         scanEntry.userName = card.userName || card.name || ''
 
         // Kurangi qtyAkses jika kartu punya kuota
@@ -44,11 +44,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           })
         }
       } else {
-        scanEntry.ticketType = normalizeTicketType(ticketType || 'Manual')
+        scanEntry.ticketType = normalizeTicketType(ticketType || 'Tiket Harian')
       }
     } else {
       scanEntry.uid = 'manual-' + Date.now()
-      scanEntry.ticketType = normalizeTicketType(ticketType || 'Manual')
+      scanEntry.ticketType = normalizeTicketType(ticketType || 'Tiket Harian')
     }
 
     await db.collection('scanLogs').add(scanEntry)
