@@ -652,17 +652,6 @@ export default function KasirPage() {
                   <h2 className="text-base font-semibold text-slate-900 mb-5">Buat Transaksi</h2>
                   <form onSubmit={handleCreateTransaction} className="space-y-4">
                     <div>
-                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">UID Kartu</label>
-                      <input
-                        type="text"
-                        value={cardUid}
-                        onChange={(e) => setCardUid(e.target.value)}
-                        placeholder="Scan atau masukkan UID"
-                        className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
-                        disabled={transactionLoading}
-                      />
-                    </div>
-                    <div>
                       <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Jenis Tiket</label>
                       <select
                         value={selectedTicketType}
@@ -710,6 +699,17 @@ export default function KasirPage() {
                           <option key={method} value={method}>{method}</option>
                         ))}
                       </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">UID Kartu</label>
+                      <input
+                        type="text"
+                        value={cardUid}
+                        onChange={(e) => setCardUid(e.target.value)}
+                        placeholder="Scan atau masukkan UID"
+                        className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                        disabled={transactionLoading}
+                      />
                     </div>
                     <button
                       type="submit"
@@ -1028,7 +1028,7 @@ export default function KasirPage() {
                         onChange={(e) => setGateTicketType(e.target.value)}
                         className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 transition-colors focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                       >
-                        {['Manual', ...(ticketTypes.length ? ticketTypes : DEFAULT_TICKET_TYPES)].map((t) => (
+                        {[...(ticketTypes.length ? ticketTypes : DEFAULT_TICKET_TYPES)].map((t) => (
                           <option key={t} value={t}>{t}</option>
                         ))}
                       </select>

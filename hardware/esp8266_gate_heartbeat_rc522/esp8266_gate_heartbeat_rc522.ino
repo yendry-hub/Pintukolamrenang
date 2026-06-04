@@ -42,6 +42,7 @@ ESP8266WebServer server(80);
 // Vercel (aktif untuk tes):
 const char* UID_ENDPOINT = "https://pintukolamrenang.vercel.app/api/uid";
 const char* HEARTBEAT_ENDPOINT = "https://pintukolamrenang.vercel.app/api/gate-heartbeat";
+const char* BUTTON_ENDPOINT = "https://pintukolamrenang.vercel.app/api/button-trigger";
 const char* API_HOST = "pintukolamrenang.vercel.app";
 
 // Self-host API server (ganti IP_VPS dengan alamat VPS):
@@ -76,6 +77,7 @@ const int RELAY_ACTIVE_LEVEL = HIGH;
 const int RELAY_IDLE_LEVEL = LOW;
 const unsigned long RELAY_OPEN_MS = 3000;
 const int RESET_CONFIG_PIN = 0; // Flash button (D3 / GPIO0) — tekan saat boot untuk reset WiFi
+const int BUTTON_PIN = 4;       // NodeMCU D2 — saklar fisik optional (kabel panjang)
 
 MFRC522 mfrc522(RC522_SS_PIN, RC522_RST_PIN);
 const unsigned long UID_CONFIRM_TIMEOUT_MS = 5000;
@@ -84,6 +86,7 @@ const unsigned long CARD_DETECTED_LED_MS = 120;
 
 void flashCardDetectedLed();
 void checkCardLed();
+void checkButtonPress();
 void openGate();
 void checkGateClose();
 void blinkStatusLedIfDue();
@@ -109,6 +112,13 @@ unsigned long gateOpenUntil = 0;
 unsigned long cardLedUntil = 0;
 bool blinkLedOn = false;
 unsigned long blinkLedUntil = 0;
+
+// Button debounce — saklar fisik opsional
+unsigned long lastButtonDebounceMillis = 0;
+unsigned long lastButtonCooldownMillis = 0;
+const unsigned long BUTTON_DEBOUNCE_MS = 50;
+const unsigned long BUTTON_COOLDOWN_MS = 3000;
+bool lastButtonState = HIGH;
 
 // ---- WiFi Manager (Captive Portal) ----
 #include <EEPROM.h>
@@ -353,6 +363,9 @@ void setup() {
   mfrc522.PCD_Init();
   Log.println("RC522 siap.");
 
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  lastButtonState = digitalRead(BUTTON_PIN);
+
   wifiManagerSetup();
 
   // mDNS — akses via http://gate-a.local/
@@ -439,6 +452,7 @@ void loop() {
   checkGateClose();
   checkCardLed();
   blinkStatusLedIfDue();
+  checkButtonPress();
 
   if (millis() - lastAlivePrintMillis >= 5000) {
     lastAlivePrintMillis = millis();
@@ -636,6 +650,54 @@ void sendUid(const String& uid) {
     // Kirim scanAck segera tanpa menunggu heartbeat berikutnya
     sendHeartbeat();
   }
+}
+
+void sendButtonPress() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Log.println("BUTTON OFFLINE — gate tetap terbuka (fail-open)");
+    return;
+  }
+
+  HTTPClient http;
+  WiFiClientSecure client;
+  client.setInsecure();
+  client.setTimeout(5);
+  http.begin(client, BUTTON_ENDPOINT);
+  http.setTimeout(5000);
+  http.addHeader("Content-Type", "application/json");
+
+  String payload = "{";
+  payload += "\"secret\":\"" + String(GATE_SECRET) + "\",";
+  payload += "\"gateId\":\"" + String(GATE_ID) + "\"";
+  payload += "}";
+
+  int httpCode = http.POST(payload);
+  String response = http.getString();
+
+  Log.print("BUTTON TRIGGER ");
+  Log.print(httpCode);
+  Log.print(": ");
+  Log.println(response);
+
+  http.end();
+}
+
+void checkButtonPress() {
+  bool btn = digitalRead(BUTTON_PIN);
+  unsigned long now = millis();
+
+  if (btn == LOW && lastButtonState == HIGH && now - lastButtonDebounceMillis > BUTTON_DEBOUNCE_MS) {
+    lastButtonDebounceMillis = now;
+    if (digitalRead(BUTTON_PIN) == LOW && now - lastButtonCooldownMillis > BUTTON_COOLDOWN_MS) {
+      Log.println("BUTTON PRESSED — gate dibuka & dikirim ke server");
+      flashCardDetectedLed();
+      openGate();
+      sendButtonPress();
+      lastButtonCooldownMillis = now;
+    }
+  }
+
+  lastButtonState = btn;
 }
 
 void openGate() {
