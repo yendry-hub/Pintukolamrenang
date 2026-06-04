@@ -196,7 +196,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let prices: Record<string, number> = {}
     try {
       const priceDoc = await db.collection('settings').doc('ticket-prices').get()
-      if (priceDoc.exists) prices = priceDoc.data() as Record<string, number>
+      if (priceDoc.exists) {
+        const data = priceDoc.data() as Record<string, any>
+        if (data.prices) prices = data.prices as Record<string, number>
+      }
     } catch { /* ignore */ }
 
     const totalScans = scanLogsSnap.size
