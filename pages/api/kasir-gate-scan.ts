@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import initFirebaseAdmin from '@/lib/firebaseAdmin'
 import { getTodayStartJakarta } from '@/lib/dateUtils'
+import { normalizeTicketType } from '@/lib/ticketTypes'
 
 const admin = initFirebaseAdmin()
 
@@ -33,7 +34,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const cardSnap = await cardRef.get()
       if (cardSnap.exists) {
         const card = cardSnap.data() || {}
-        scanEntry.ticketType = card.ticketType ?? ticketType ?? 'Manual'
+        scanEntry.ticketType = normalizeTicketType(card.ticketType ?? ticketType ?? 'Tiket Harian')
         scanEntry.userName = card.userName || card.name || ''
 
         // Kurangi qtyAkses jika kartu punya kuota
@@ -43,11 +44,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           })
         }
       } else {
-        scanEntry.ticketType = ticketType || 'Manual'
+        scanEntry.ticketType = normalizeTicketType(ticketType || 'Tiket Harian')
       }
     } else {
       scanEntry.uid = 'manual-' + Date.now()
-      scanEntry.ticketType = ticketType || 'Manual'
+      scanEntry.ticketType = normalizeTicketType(ticketType || 'Tiket Harian')
     }
 
     await db.collection('scanLogs').add(scanEntry)

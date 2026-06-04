@@ -3,6 +3,7 @@ import initFirebaseAdmin from '@/lib/firebaseAdmin'
 import { getGateStatus } from '@/lib/gateDevices'
 import { getTodayStartJakarta, getTodayEndJakarta } from '@/lib/dateUtils'
 import type { GateStatus, ScanLog, TicketStats, TicketType } from '@/lib/types'
+import { normalizeTicketType } from '@/lib/ticketTypes'
 
 const admin = initFirebaseAdmin()
 
@@ -18,12 +19,6 @@ function toDate(value: any): Date {
 
 function getGateLabel(gateId: string, status: GateStatus): string {
   return status.gates?.find((gate) => gate.gateId === gateId)?.name || gateId
-}
-
-function ensureTicketType(value: unknown): TicketType {
-  const allowed: TicketType[] = ['Tiket Harian', 'Member', 'VIP', 'Paket Keluarga', 'Tiket Anak', 'Tiket Dewasa']
-  const ticketType = String(value) as TicketType
-  return allowed.includes(ticketType) ? ticketType : 'Tiket Harian'
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -135,7 +130,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       return {
         uid: String(data.uid || 'Unknown'),
-        ticketType: ensureTicketType(data.ticketType),
+        ticketType: normalizeTicketType(data.ticketType || 'Unknown'),
         gate: getGateLabel(String(data.gateId || data.gate || 'Unknown'), status),
         status: String(data.status || 'INVALID') as ScanLog['status'],
         scannedAt: scanDate.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' }),

@@ -2,6 +2,7 @@ import { NextApiRequest, NextApiResponse } from 'next'
 import * as admin from 'firebase-admin'
 import initializeFirebaseAdmin from '@/lib/firebaseAdmin'
 import { generateReceipt } from '@/lib/receipt'
+import { normalizeTicketType } from '@/lib/ticketTypes'
 
 interface TransactionRequest {
   uid: string
@@ -51,8 +52,9 @@ export default async function handler(
     }
 
     const { uid: cardUid, ticketType, price, quantity = 1, total, paymentMethod } = req.body as TransactionRequest
+    const normalizedTicketType = normalizeTicketType(ticketType)
 
-    if (!cardUid || !ticketType || !price || !paymentMethod) {
+    if (!cardUid || !normalizedTicketType || !price || !paymentMethod) {
       return res.status(400).json({ success: false, transactionId: '', receipt: '', error: 'Missing required fields' })
     }
 
@@ -65,7 +67,7 @@ export default async function handler(
     await transactionRef.set({
       transactionId,
       uid: cardUid,
-      ticketType,
+      ticketType: normalizedTicketType,
       price,
       quantity,
       total: totalAmount,

@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
+import { normalizeTicketType } from '@/lib/ticketTypes'
 import initFirebaseAdmin from '@/lib/firebaseAdmin'
 import { getTodayStartJakarta, getTodayEndJakarta } from '@/lib/dateUtils'
 
@@ -84,7 +85,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const data = doc.data() as any
       // Konversi createdAt ke Date jika itu adalah Timestamp
       const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt)
-      const ticketType = data.ticketType || 'Unknown'
+      const ticketType = normalizeTicketType(data.ticketType || 'Unknown')
       const quantity = data.quantity || 1
 
       // PERBAIKAN: Gunakan data.price jika data.total tidak ada

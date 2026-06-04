@@ -113,7 +113,7 @@ export default function KasirPage() {
   const [gateLoading, setGateLoading] = useState<string | null>(null)
   const [gateFeedback, setGateFeedback] = useState<{ gateId: string; ok: boolean; msg: string } | null>(null)
   const [gateUid, setGateUid] = useState('')
-  const [gateTicketType, setGateTicketType] = useState('Manual')
+  const [gateTicketType, setGateTicketType] = useState('Tiket Harian')
   const [gateCardInfo, setGateCardInfo] = useState<{ uid?: string; qtyAkses?: number; ticketType?: string; active?: boolean; blocked?: boolean } | null>(null)
 
   useEffect(() => {

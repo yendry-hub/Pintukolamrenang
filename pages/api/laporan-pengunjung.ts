@@ -1,6 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next'
 import initFirebaseAdmin from '@/lib/firebaseAdmin'
 import { getTodayStartJakarta, getTodayEndJakarta } from '@/lib/dateUtils'
+import { normalizeTicketType } from '@/lib/ticketTypes'
 
 function getDateRange(filter: string) {
   switch (filter) {
@@ -60,7 +61,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   snapshot.forEach((doc: any) => {
     const data = { id: doc.id, ...doc.data() }
     scanLogs.push(data)
-    const type = data.ticketType || 'Unknown'
+    const type = normalizeTicketType(data.ticketType || 'Unknown')
     if (!groups[type]) groups[type] = { count: 0, items: [] }
     groups[type].count++
     groups[type].items.push(data)
