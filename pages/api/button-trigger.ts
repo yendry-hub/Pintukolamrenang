@@ -26,7 +26,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Write scan log
     const scanEntry = {
       uid: uid || 'BUTTON',
-      ticketType: 'Manual',
+      ticketType: 'Tiket Harian',
       gateId,
       status: 'OPEN',
       source: 'button',

@@ -186,7 +186,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const scanGroupMap: Record<string, { count: number; rawDocs: any[] }> = {}
     scanLogsSnap.docs.forEach((doc) => {
       const d = doc.data() as Record<string, any>
-      const tt = String(d.ticketType || 'Unknown')
+      const tt = ensureTicketType(d.ticketType)
       if (!scanGroupMap[tt]) scanGroupMap[tt] = { count: 0, rawDocs: [] }
       scanGroupMap[tt].count++
       scanGroupMap[tt].rawDocs.push(d)
