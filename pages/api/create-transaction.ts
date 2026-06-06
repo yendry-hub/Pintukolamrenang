@@ -50,10 +50,23 @@ export default async function handler(
       return res.status(403).json({ success: false, transactionId: '', receipt: '', error: 'Unauthorized. Only KASIR can create transactions.' })
     }
 
-    const { uid: cardUid, ticketType, price, quantity = 1, total, paymentMethod } = req.body as TransactionRequest
+    const { uid: cardUid, ticketType, price, quantity = 1, total, paymentMethod, localId } = req.body as TransactionRequest & { localId?: string }
 
     if (!cardUid || !ticketType || !price || !paymentMethod) {
       return res.status(400).json({ success: false, transactionId: '', receipt: '', error: 'Missing required fields' })
+    }
+
+    // Idempotency: jika localId dikirim, cek apakah sudah pernah diproses
+    if (localId) {
+      const existingSnap = await db.collection('transactions').where('localId', '==', localId).limit(1).get()
+      if (!existingSnap.empty) {
+        const existing = existingSnap.docs[0].data() as any
+        return res.status(200).json({
+          success: true,
+          transactionId: existing.transactionId,
+          receipt: existing.receipt || ''
+        })
+      }
     }
 
     const transactionRef = db.collection('transactions').doc()
@@ -74,7 +87,8 @@ export default async function handler(
       paymentStatus: 'COMPLETED',
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       receiptPrinted: false,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      ...(localId ? { localId } : {})
     })
 
     const printoutSnap = await db.collection('settings').doc('printout').get()
@@ -100,7 +114,7 @@ export default async function handler(
       paymentMethod
     }, receiptCfg)
 
-    await transactionRef.update({ receiptPrinted: true })
+    await transactionRef.update({ receipt, receiptPrinted: true })
 
     return res.status(200).json({
       success: true,

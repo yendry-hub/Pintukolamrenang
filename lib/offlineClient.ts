@@ -202,34 +202,42 @@ export async function getPendingTransactions() {
   return db.getAll(STORE_PENDING_TRANSACTIONS) as Promise<PendingTransaction[]>
 }
 
+let _syncingMutex = false
+
 export async function syncPendingTransactions(getToken: () => Promise<string>) {
   if (typeof navigator !== 'undefined' && !navigator.onLine) return 0
+  if (_syncingMutex) return 0
 
   const pending = await getPendingTransactions()
   if (!pending.length) return 0
 
+  _syncingMutex = true
   const token = await getToken()
   let synced = 0
   const db = await getDB()
 
-  for (const transaction of pending) {
-    const response = await fetch('/api/create-transaction', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify(transaction.payload)
-    })
+  try {
+    for (const transaction of pending) {
+      const response = await fetch('/api/create-transaction', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ ...transaction.payload, localId: transaction.localId })
+      })
 
-    if (!response.ok) {
-      throw new Error('Gagal sinkron transaksi offline')
-    }
+      if (!response.ok) {
+        throw new Error('Gagal sinkron transaksi offline')
+      }
 
-    if (transaction.id) {
-      await db.delete(STORE_PENDING_TRANSACTIONS, transaction.id)
+      if (transaction.id) {
+        await db.delete(STORE_PENDING_TRANSACTIONS, transaction.id)
+      }
+      synced += 1
     }
-    synced += 1
+  } finally {
+    _syncingMutex = false
   }
 
   return synced
