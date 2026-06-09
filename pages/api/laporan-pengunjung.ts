@@ -2,7 +2,12 @@ import { NextApiRequest, NextApiResponse } from 'next'
 import initFirebaseAdmin from '@/lib/firebaseAdmin'
 import { getTodayStartJakarta, getTodayEndJakarta } from '@/lib/dateUtils'
 
-function getDateRange(filter: string) {
+function getDateRange(filter: string, queryStartDate?: string, queryEndDate?: string) {
+  if (queryStartDate && queryEndDate) {
+    const end = new Date(queryEndDate)
+    end.setDate(end.getDate() + 1)
+    return { start: new Date(queryStartDate), end }
+  }
   switch (filter) {
     case 'today':
       return { start: getTodayStartJakarta(), end: getTodayEndJakarta() }
@@ -38,7 +43,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const filter = (req.query.filter as string) || 'today'
-  const { start, end } = getDateRange(filter)
+  const queryStartDate = req.query.startDate as string | undefined
+  const queryEndDate = req.query.endDate as string | undefined
+  const { start, end } = getDateRange(filter, queryStartDate, queryEndDate)
 
   // Fetch current ticket prices
   let prices: Record<string, number> = {}

@@ -71,11 +71,15 @@ export default function AdminPage() {
   const [ticketTypeRows, setTicketTypeRows] = useState<{ name: string; price: number }[]>([])
   const [ticketTypeSaving, setTicketTypeSaving] = useState(false)
   const [reportFilter, setReportFilter] = useState<'today' | 'week' | 'month' | 'all'>('today')
+  const [reportStartDate, setReportStartDate] = useState('')
+  const [reportEndDate, setReportEndDate] = useState('')
   const [salesReport, setSalesReport] = useState<any>(null)
   const [reportLoading, setReportLoading] = useState(false)
   const [visitorReport, setVisitorReport] = useState<any>(null)
   const [visitorReportLoading, setVisitorReportLoading] = useState(false)
   const [visitorReportFilter, setVisitorReportFilter] = useState<'today' | 'week' | 'month' | 'all'>('today')
+  const [visitorStartDate, setVisitorStartDate] = useState('')
+  const [visitorEndDate, setVisitorEndDate] = useState('')
   const [offlineMode, setOfflineMode] = useState(false)
   const [ticketTypes, setTicketTypes] = useState<string[]>([])
   const [paymentMethods, setPaymentMethods] = useState<string[]>(['Tunai', 'Kartu Debit', 'Kartu Kredit', 'E-Wallet'])
@@ -354,11 +358,15 @@ export default function AdminPage() {
     }
   }
 
-  const fetchSalesReport = async (filter = reportFilter) => {
+  const fetchSalesReport = async (filter: string = reportFilter, startDate?: string, endDate?: string) => {
     setReportLoading(true)
     try {
       const token = await getFirebaseIdToken()
-      const res = await fetch(`/api/sales-report?filter=${filter}`, {
+      let url = `/api/sales-report?filter=${filter}`
+      if (startDate && endDate) {
+        url += `&startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`
+      }
+      const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` }
       })
       const data = await res.json()
@@ -377,12 +385,16 @@ export default function AdminPage() {
     }
   }
 
-  const fetchVisitorReport = async (filter = visitorReportFilter) => {
+  const fetchVisitorReport = async (filter: string = visitorReportFilter, startDate?: string, endDate?: string) => {
     setVisitorReportLoading(true)
     setError(null)
     try {
       const token = await getFirebaseIdToken()
-      const res = await fetch(`/api/laporan-pengunjung?filter=${filter}`, {
+      let url = `/api/laporan-pengunjung?filter=${filter}`
+      if (startDate && endDate) {
+        url += `&startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`
+      }
+      const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` }
       })
       if (res.status === 401) {
@@ -905,19 +917,41 @@ export default function AdminPage() {
                       <h2 className="text-base font-semibold text-slate-900">Laporan Penjualan Tiket</h2>
                       <p className="text-sm text-slate-400">Ringkasan pendapatan dan volume tiket</p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <div className="flex bg-slate-100 p-0.5 rounded-lg">
                         {(['today', 'week', 'month', 'all'] as const).map((f) => (
                           <button
                             key={f}
-                            onClick={() => setReportFilter(f)}
+                            onClick={() => { setReportFilter(f); setReportStartDate(''); setReportEndDate('') }}
                             className={`px-3.5 py-1.5 text-xs font-medium rounded-md transition-all ${
-                              reportFilter === f ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
+                              reportFilter === f && !reportStartDate ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
                             }`}
                           >
                             {f === 'today' ? 'Hari Ini' : f === 'week' ? 'Minggu Ini' : f === 'month' ? 'Bulan' : 'Semua'}
                           </button>
                         ))}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="date"
+                          value={reportStartDate}
+                          onChange={(e) => setReportStartDate(e.target.value)}
+                          className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                        />
+                        <span className="text-slate-300 text-xs">—</span>
+                        <input
+                          type="date"
+                          value={reportEndDate}
+                          onChange={(e) => setReportEndDate(e.target.value)}
+                          className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                        />
+                        <button
+                          onClick={() => { if (reportStartDate && reportEndDate) fetchSalesReport('custom', reportStartDate, reportEndDate) }}
+                          disabled={!reportStartDate || !reportEndDate}
+                          className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white transition-all hover:bg-sky-700 active:scale-[0.97] disabled:opacity-40"
+                        >
+                          Terapkan
+                        </button>
                       </div>
                       {salesReport && (
                         <button
@@ -955,7 +989,7 @@ export default function AdminPage() {
                               @media print{body{padding:16px}button{display:none}}
                             </style></head><body>
                             <h1>Laporan Penjualan Tiket</h1>
-                            <p class="sub">Periode: ${new Date(r.startDate).toLocaleDateString('id-ID')} — ${new Date(r.generatedAt).toLocaleDateString('id-ID')} (${r.filter === 'today' ? 'Hari Ini' : r.filter === 'week' ? 'Minggu Ini' : r.filter === 'month' ? 'Bulan' : 'Semua'})</p>
+                            <p class="sub">Periode: ${new Date(r.startDate).toLocaleDateString('id-ID')} — ${new Date(r.generatedAt).toLocaleDateString('id-ID')} (${r.filter === 'today' ? 'Hari Ini' : r.filter === 'week' ? 'Minggu Ini' : r.filter === 'month' ? 'Bulan' : r.filter === 'custom' ? 'Kustom' : 'Semua'})</p>
                             <div class="cards">
                               <div class="card"><div class="label">Total Pendapatan</div><div class="value" style="color:#0284c7">Rp ${r.summary.totalRevenue.toLocaleString('id-ID')}</div></div>
                               <div class="card"><div class="label">Tiket Terjual</div><div class="value" style="color:#059669">${r.summary.totalQuantity} Tiket</div></div>
@@ -1065,19 +1099,41 @@ export default function AdminPage() {
                       <h2 className="text-base font-semibold text-slate-900">Laporan Pengunjung</h2>
                       <p className="text-sm text-slate-400">Jumlah pengunjung berdasarkan jenis tiket</p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <div className="flex bg-slate-100 p-0.5 rounded-lg">
                         {(['today', 'week', 'month', 'all'] as const).map((f) => (
                           <button
                             key={f}
-                            onClick={() => setVisitorReportFilter(f)}
+                            onClick={() => { setVisitorReportFilter(f); setVisitorStartDate(''); setVisitorEndDate('') }}
                             className={`px-3.5 py-1.5 text-xs font-medium rounded-md transition-all ${
-                              visitorReportFilter === f ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
+                              visitorReportFilter === f && !visitorStartDate ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
                             }`}
                           >
                             {f === 'today' ? 'Hari Ini' : f === 'week' ? 'Minggu Ini' : f === 'month' ? 'Bulan' : 'Semua'}
                           </button>
                         ))}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="date"
+                          value={visitorStartDate}
+                          onChange={(e) => setVisitorStartDate(e.target.value)}
+                          className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                        />
+                        <span className="text-slate-300 text-xs">—</span>
+                        <input
+                          type="date"
+                          value={visitorEndDate}
+                          onChange={(e) => setVisitorEndDate(e.target.value)}
+                          className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                        />
+                        <button
+                          onClick={() => { if (visitorStartDate && visitorEndDate) fetchVisitorReport('custom', visitorStartDate, visitorEndDate) }}
+                          disabled={!visitorStartDate || !visitorEndDate}
+                          className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white transition-all hover:bg-sky-700 active:scale-[0.97] disabled:opacity-40"
+                        >
+                          Terapkan
+                        </button>
                       </div>
                       {visitorReport && (
                         <button
@@ -1109,7 +1165,7 @@ export default function AdminPage() {
                               @media print{body{padding:16px}button{display:none}}
                             </style></head><body>
                             <h1>Laporan Pengunjung</h1>
-                            <p class="sub">Periode: ${new Date(r.startDate).toLocaleDateString('id-ID')} — ${new Date(r.endDate).toLocaleDateString('id-ID')} (${r.filter === 'today' ? 'Hari Ini' : r.filter === 'week' ? 'Minggu Ini' : r.filter === 'month' ? 'Bulan' : 'Semua'})</p>
+                            <p class="sub">Periode: ${new Date(r.startDate).toLocaleDateString('id-ID')} — ${new Date(r.endDate).toLocaleDateString('id-ID')} (${r.filter === 'today' ? 'Hari Ini' : r.filter === 'week' ? 'Minggu Ini' : r.filter === 'month' ? 'Bulan' : r.filter === 'custom' ? 'Kustom' : 'Semua'})</p>
                             <div class="cards">
                               <div class="card"><div class="label">Total Pengunjung</div><div class="value" style="color:#0284c7">${r.summary.totalVisitors}</div></div>
                               <div class="card"><div class="label">Jenis Tiket</div><div class="value" style="color:#059669">${r.breakdown.length}</div></div>

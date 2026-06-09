@@ -2,19 +2,18 @@ import Link from 'next/link'
 import { FormEvent, useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import { getFirebaseIdToken, loginWithEmail, onFirebaseAuthStateChanged } from '@/lib/firebase'
-import { cacheOfflineCredential, verifyOfflineCredential } from '@/lib/offlineClient'
 
-export default function LoginPage() {
+export default function SuperAdminLoginPage() {
   const router = useRouter()
-  const [email, setEmail] = useState('superadmin@waterpark.id')
-  const [password, setPassword] = useState('password123')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const unsubscribe = onFirebaseAuthStateChanged((user) => {
       if (user) {
-        router.replace('/admin')
+        router.replace('/superadmin')
       }
     })
     return unsubscribe
@@ -26,27 +25,17 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      if (!navigator.onLine) {
-        const verified = await verifyOfflineCredential(email, password, 'admin')
-        if (!verified) {
-          throw new Error('Login offline gagal. Login online sekali dulu di perangkat ini.')
-        }
-        router.push('/admin')
-        return
-      }
-
       await loginWithEmail(email, password)
       const token = await getFirebaseIdToken()
-      const response = await fetch('/api/admin-dashboard', {
+      const response = await fetch('/api/check-superadmin', {
         headers: { Authorization: `Bearer ${token}` }
       })
 
       if (!response.ok) {
-        throw new Error('Akun ini belum memiliki akses admin.')
+        throw new Error('Akun ini belum memiliki akses Super Admin.')
       }
 
-      await cacheOfflineCredential(email, password, 'admin')
-      router.push('/admin')
+      router.push('/superadmin')
     } catch (err: any) {
       setError(err?.message || 'Gagal login. Periksa email dan password.')
       setLoading(false)
@@ -54,11 +43,11 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-sky-700 via-sky-600 to-cyan-600 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-800 via-slate-700 to-indigo-800 px-4">
       <div className="w-full max-w-sm animate-slide-up">
         <div className="rounded-2xl border border-white/10 bg-white/95 p-7 shadow-modal backdrop-blur-sm">
-          <h1 className="text-2xl font-bold text-slate-900">Login Sistem</h1>
-          <p className="mt-1.5 text-sm text-slate-500">Masuk untuk mengelola tiket, transaksi, dan monitoring gate.</p>
+          <h1 className="text-2xl font-bold text-slate-900">Super Admin Login</h1>
+          <p className="mt-1.5 text-sm text-slate-500">Masuk untuk mengelola data transaksi dan scan.</p>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <div>
@@ -67,8 +56,8 @@ export default function LoginPage() {
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="admin@waterpark.id"
-                className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                placeholder="superadmin@waterpark.id"
+                className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                 required
               />
             </div>
@@ -79,7 +68,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder="••••••••"
-                className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                 required
               />
             </div>
@@ -91,18 +80,14 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-medium text-white shadow-card transition-all hover:bg-sky-700 hover:shadow-card-hover active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-card transition-all hover:bg-indigo-700 hover:shadow-card-hover active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? 'Memproses...' : 'Login'}
             </button>
           </form>
 
-          <div className="mt-6 text-xs text-slate-400">
-            Pastikan akun admin sudah dibuat di Firebase Authentication.
-          </div>
-          <div className="mt-3 text-xs flex items-center justify-between">
-            <Link href="/" className="font-medium text-sky-600 hover:text-sky-700">&larr; Kembali ke Beranda</Link>
-            <Link href="/superadmin-login" className="font-medium text-indigo-600 hover:text-indigo-700">Super Admin &rarr;</Link>
+          <div className="mt-3 text-xs">
+            <Link href="/" className="font-medium text-indigo-600 hover:text-indigo-700">&larr; Kembali ke Beranda</Link>
           </div>
         </div>
       </div>

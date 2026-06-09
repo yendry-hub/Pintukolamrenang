@@ -47,40 +47,52 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const nowInJakarta = new Date(Date.now() + 7 * 60 * 60 * 1000)
     let startDate: Date
 
-    // Calculate start date based on filter (WIB timezone)
-    switch (filterType) {
-      case 'today':
-        startDate = getTodayStartJakarta()
-        break
-      case 'week': {
-        const weekAgoJakarta = new Date(nowInJakarta.getTime() - 7 * 86400000)
-        startDate = new Date((weekAgoJakarta.getTime() - 7 * 60 * 60 * 1000))
-        break
+    // Check for custom date range
+    const queryStartDate = req.query.startDate as string
+    const queryEndDate = req.query.endDate as string
+    if (queryStartDate && queryEndDate) {
+      startDate = new Date(queryStartDate)
+    } else {
+      // Calculate start date based on filter (WIB timezone)
+      switch (filterType) {
+        case 'today':
+          startDate = getTodayStartJakarta()
+          break
+        case 'week': {
+          const weekAgoJakarta = new Date(nowInJakarta.getTime() - 7 * 86400000)
+          startDate = new Date((weekAgoJakarta.getTime() - 7 * 60 * 60 * 1000))
+          break
+        }
+        case 'month': {
+          const monthStart = new Date(Date.UTC(nowInJakarta.getUTCFullYear(), nowInJakarta.getUTCMonth(), 1))
+          startDate = new Date(monthStart.getTime() - 7 * 60 * 60 * 1000)
+          break
+        }
+        case 'all':
+          startDate = new Date('2000-01-01')
+          break
+        default:
+          startDate = getTodayStartJakarta()
       }
-      case 'month': {
-        const monthStart = new Date(Date.UTC(nowInJakarta.getUTCFullYear(), nowInJakarta.getUTCMonth(), 1))
-        startDate = new Date(monthStart.getTime() - 7 * 60 * 60 * 1000)
-        break
-      }
-      case 'all':
-        startDate = new Date('2000-01-01')
-        break
-      default:
-        startDate = getTodayStartJakarta()
     }
 
     // Query transactions from Firestore
-    const transactionsSnap = await admin
-      .firestore()
-      .collection('transactions')
-      .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(startDate))
-      .get()
+    const db = admin.firestore()
+    let query = db.collection('transactions').where('createdAt', '>=', admin.firestore.Timestamp.fromDate(startDate)) as any
+
+    if (queryStartDate && queryEndDate) {
+      const endDate = new Date(queryEndDate)
+      endDate.setDate(endDate.getDate() + 1)
+      query = query.where('createdAt', '<', admin.firestore.Timestamp.fromDate(endDate))
+    }
+
+    const transactionsSnap = await query.get()
 
     // Process transactions to generate report
     const salesMap: Record<string, { quantity: number; totalRevenue: number; prices: number[] }> = {}
     const transactions: any[] = []
 
-    transactionsSnap.forEach((doc) => {
+    transactionsSnap.forEach((doc: any) => {
       const data = doc.data() as any
       // Konversi createdAt ke Date jika itu adalah Timestamp
       const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt)
