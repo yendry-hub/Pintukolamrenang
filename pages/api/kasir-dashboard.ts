@@ -105,7 +105,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(todayStart))
         .where('createdAt', '<', admin.firestore.Timestamp.fromDate(todayEnd))
         .orderBy('createdAt', 'desc')
-        .limit(50)
         .get(),
       db.collection('rfidCards').where('active', '==', true).get(),
       db
