@@ -23,6 +23,7 @@ function ensureTicketType(value: unknown): TicketType {
 }
 
 export default async function handler(_req: NextApiRequest, res: NextApiResponse) {
+  res.setHeader('Cache-Control', 'public, max-age=30, s-maxage=30, stale-while-revalidate=60')
   try {
     const db = admin.firestore()
     const status = await getGateStatus(db)

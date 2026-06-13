@@ -21,7 +21,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // if (!decodedToken.admin) return res.status(403).json({ error: 'Forbidden' })
 
     const db = admin.firestore()
-    const snapshot = await db.collection('rfidCards').orderBy('createdAt', 'desc').get()
+    const snapshot = await db.collection('rfidCards').orderBy('createdAt', 'desc').limit(200).get()
     
     const cards = snapshot.docs.map(doc => ({
       uid: doc.id,
