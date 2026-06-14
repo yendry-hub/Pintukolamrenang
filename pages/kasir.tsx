@@ -3,45 +3,22 @@ import { FormEvent, useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import { getFirebaseIdToken, logoutFirebase, onFirebaseAuthStateChanged } from '@/lib/firebase'
 import {
-  cacheJson,
   clearOfflineSession,
-  getCachedJson,
   getOfflineSession,
-  getPendingTransactions,
-  queueOfflineTransaction,
   setOfflineSession,
-  syncPendingTransactions
+  saveTransactionLocally,
+  saveScanLogLocally,
+  computeLocalDashboard,
+  getLocalCardByUid,
+  syncAllLocalData,
+  startPeriodicSync,
+  stopPeriodicSync,
+  cacheConfig,
+  getCachedConfig,
 } from '@/lib/offlineClient'
 import { playSuccessSound, playFailSound } from '@/lib/sounds'
 import StatusCard from '@/components/StatusCard'
 import type { GateStatus, ScanLog, TicketStats, TicketType } from '@/lib/types'
-
-type KasirDashboardResponse = {
-  status: GateStatus
-  stats: TicketStats
-  recentScans: ScanLog[]
-  scanBreakdown: {
-    ticketType: string
-    count: number
-    price: number
-    totalRevenue: number
-    percentage: number
-  }[]
-  todayTransactions: {
-    transactionId: string
-    createdAt: string
-    ticketType: string
-    quantity: number
-    price: number
-    total: number
-    cashier: string
-    paymentMethod: string
-  }[]
-  todaySummary?: {
-    transactionCount: number
-    revenue: number
-  }
-}
 
 const initialStats: TicketStats = {
   totalVisitorsToday: 0,
@@ -103,8 +80,8 @@ export default function KasirPage() {
   const [view, setView] = useState<'dashboard' | 'transaksi' | 'ringkasan' | 'riwayat' | 'grafik' | 'kontrol-gate'>('dashboard')
   const [ticketPrices, setTicketPrices] = useState<Record<string, number>>(DEFAULT_TICKET_PRICES)
   const [offlineMode, setOfflineMode] = useState(false)
-  const [pendingTransactions, setPendingTransactions] = useState(0)
   const [cashierEmail, setCashierEmail] = useState<string | null>(null)
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null)
   const [ticketTypes, setTicketTypes] = useState<string[]>([])
   const [paymentMethods, setPaymentMethods] = useState<string[]>([])
   const [todaySummary, setTodaySummary] = useState<{ transactionCount: number; revenue: number }>({ transactionCount: 0, revenue: 0 })
@@ -116,14 +93,55 @@ export default function KasirPage() {
   const [gateTicketType, setGateTicketType] = useState('Tiket Harian')
   const [gateCardInfo, setGateCardInfo] = useState<{ uid?: string; qtyAkses?: number; ticketType?: string; active?: boolean; blocked?: boolean } | null>(null)
 
+  const fetchGateStatus = async () => {
+    try {
+      const res = await fetch('/api/status')
+      if (res.ok) {
+        const data: GateStatus = await res.json()
+        setStatus(data)
+      }
+    } catch { /* silent */ }
+  }
+
+  const loadLocalDashboard = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const prices = getCachedConfig<Record<string, number>>('ticketPrices') || DEFAULT_TICKET_PRICES
+      const data = await computeLocalDashboard(prices)
+      setStats(data.stats)
+      setRecentScans(data.recentScans as ScanLog[])
+      setTodaySummary(data.todaySummary)
+      setScanBreakdown(data.scanBreakdown)
+      setTodayTransactions(data.todayTransactions)
+    } catch (err: any) {
+      console.error('Gagal muat dashboard lokal:', err)
+      setError('Belum ada data transaksi atau scan. Buat transaksi baru untuk memulai.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
-    if (!gateUid.trim()) {
+    const uid = gateUid.trim()
+    if (!uid || uid.length < 5) {
       setGateCardInfo(null)
       return
     }
     const t = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/get-card?uid=${encodeURIComponent(gateUid.trim())}`)
+        const card = await getLocalCardByUid(uid)
+        if (card) {
+          setGateCardInfo({
+            uid: card.uid,
+            qtyAkses: card.qtyAkses,
+            ticketType: card.ticketType,
+            active: card.active,
+            blocked: card.blocked,
+          })
+          return
+        }
+        const res = await fetch(`/api/get-card?uid=${encodeURIComponent(uid)}`)
         if (res.ok) {
           const data = await res.json()
           setGateCardInfo(data.card || null)
@@ -166,79 +184,59 @@ export default function KasirPage() {
       }
     }
 
-    // Log scan ke Firestore — hanya saat gate benar-benar terbuka
+    // Simpan scan log lokal (tidak langsung ke Firestore)
     if (espOk) {
-      try {
-        await fetch('/api/kasir-gate-scan', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gateId,
-            uid: gateUid || undefined,
-            ticketType: gateTicketType,
-            note: `manual kasir — ${espMsg}`,
-          }),
-        })
-      } catch {
-        // scan log gagal — tidak perlu ganggu user
-      }
+      await saveScanLogLocally({
+        gateId,
+        uid: gateUid || undefined,
+        ticketType: gateTicketType,
+        note: `manual kasir — ${espMsg}`,
+      })
     }
 
     setGateFeedback({ gateId, ok: espOk, msg: espMsg })
     setGateLoading(null)
-    fetchDashboard()
+    loadLocalDashboard()
     if (espOk) playSuccessSound()
     else playFailSound()
     setTimeout(() => setGateFeedback(null), 3000)
   }
 
-  const fetchConfig = async () => {
+  const loadConfig = async (force?: boolean) => {
+    if (!force) {
+      const cachedTypes = getCachedConfig<string[]>('ticketTypes')
+      const cachedMethods = getCachedConfig<string[]>('paymentMethods')
+      const cachedPrices = getCachedConfig<Record<string, number>>('ticketPrices')
+      if (cachedTypes && cachedMethods && cachedPrices) {
+        setTicketTypes(cachedTypes)
+        setPaymentMethods(cachedMethods)
+        setTicketPrices(cachedPrices)
+        return
+      }
+    }
     try {
       const res = await fetch('/api/get-ticket-config')
       if (res.ok) {
         const data = await res.json()
-        if (data.ticketTypes && data.ticketTypes.length > 0) {
+        if (data.ticketTypes?.length) {
           setTicketTypes(data.ticketTypes)
-          cacheJson('ticketTypes', data.ticketTypes)
+          cacheConfig('ticketTypes', data.ticketTypes)
         }
-        if (data.paymentMethods && data.paymentMethods.length > 0) {
+        if (data.paymentMethods?.length) {
           setPaymentMethods(data.paymentMethods)
-          cacheJson('paymentMethods', data.paymentMethods)
+          cacheConfig('paymentMethods', data.paymentMethods)
         }
         if (data.prices) {
           setTicketPrices(data.prices)
-          cacheJson('ticketPrices', data.prices)
+          cacheConfig('ticketPrices', data.prices)
         }
       }
     } catch (err) {
       console.error('Failed to fetch config:', err)
-      const cachedTypes = getCachedJson<string[]>('ticketTypes')
-      if (cachedTypes) setTicketTypes(cachedTypes)
-      const cachedMethods = getCachedJson<string[]>('paymentMethods')
-      if (cachedMethods) setPaymentMethods(cachedMethods)
-      const cachedPrices = getCachedJson<Record<string, number>>('ticketPrices')
-      if (cachedPrices) setTicketPrices(cachedPrices)
     }
   }
 
-  const fetchPrices = async () => {
-    try {
-      const res = await fetch('/api/get-prices')
-      if (res.ok) {
-        const data = await res.json()
-        console.log('Fetched prices:', data.prices)
-        setTicketPrices(data.prices)
-        cacheJson('ticketPrices', data.prices)
-      }
-    } catch (err) {
-      console.error('Failed to fetch prices:', err)
-      const cachedPrices = getCachedJson<Record<string, number>>('ticketPrices')
-      if (cachedPrices) {
-        setTicketPrices(cachedPrices)
-      }
-    }
-  }
-
+  // Auth + init
   useEffect(() => {
     const unsubscribe = onFirebaseAuthStateChanged((user) => {
       setAuthInitialized(true)
@@ -248,141 +246,53 @@ export default function KasirPage() {
           router.replace('/kasir-login')
           return
         }
-
         setOfflineMode(true)
         setCashierEmail(offlineSession.email)
-        loadCachedKasirData()
-        refreshPendingTransactions()
+        loadLocalDashboard()
+        loadConfig()
         return
       }
       setOfflineMode(false)
       setCashierEmail(user.email || null)
       setOfflineSession(user.email || 'kasir', 'kasir', false)
-      fetchDashboard()
-      fetchConfig()
-      syncOfflineTransactions()
+      loadLocalDashboard()
+      loadConfig()
+      // Trigger sync after login
+      getFirebaseIdToken().then(token =>
+        syncAllLocalData(() => Promise.resolve(token)).then(r => {
+          if (r.syncedTx > 0 || r.syncedScans > 0) loadLocalDashboard()
+          setLastSyncTime(new Date().toLocaleTimeString())
+        })
+      )
+      // Periodic sync (15 menit)
+      startPeriodicSync(15 * 60 * 1000, getFirebaseIdToken)
+      // Gate status polling tiap 30 detik
+      fetchGateStatus()
+      const gateTimer = setInterval(fetchGateStatus, 30_000)
+      return () => {
+        stopPeriodicSync()
+        clearInterval(gateTimer)
+      }
     })
 
     return unsubscribe
   }, [router])
 
+  // Online/offline detection — cukup toggle mode, no re-fetch needed
   useEffect(() => {
     const handleOnline = () => {
       setOfflineMode(false)
-      syncOfflineTransactions()
-      fetchDashboard()
-      fetchConfig()
+      setError(null)
     }
     const handleOffline = () => setOfflineMode(true)
-
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
-    refreshPendingTransactions()
     setOfflineMode(!navigator.onLine)
-
     return () => {
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
   }, [])
-
-  useEffect(() => {
-    if (view === 'ringkasan' || view === 'riwayat') {
-      fetchDashboard()
-    }
-  }, [view])
-
-  const loadCachedKasirData = () => {
-    const cachedDashboard = getCachedJson<KasirDashboardResponse>('kasirDashboard')
-    const cachedPrices = getCachedJson<Record<string, number>>('ticketPrices')
-
-    if (cachedDashboard) {
-      setStatus(cachedDashboard.status)
-      setStats(cachedDashboard.stats)
-      setRecentScans(cachedDashboard.recentScans)
-    }
-    if (cachedPrices) {
-      setTicketPrices(cachedPrices)
-    }
-    setLoading(false)
-    setError('Mode offline aktif. Data dashboard memakai cache terakhir, transaksi baru akan disinkronkan saat online.')
-  }
-
-  const refreshPendingTransactions = async () => {
-    const pending = await getPendingTransactions()
-    setPendingTransactions(pending.length)
-  }
-
-  const syncOfflineTransactions = async () => {
-    try {
-      const synced = await syncPendingTransactions(getFirebaseIdToken)
-      if (synced > 0) {
-        await refreshPendingTransactions()
-        fetchDashboard()
-      } else {
-        await refreshPendingTransactions()
-      }
-    } catch (err) {
-      console.error('Failed to sync offline transactions:', err)
-      await refreshPendingTransactions()
-    }
-  }
-
-  const fetchDashboard = async () => {
-    setLoading(true)
-    setError(null)
-
-    try {
-      const token = await getFirebaseIdToken()
-      const res = await fetch('/api/kasir-dashboard', {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      })
-
-      if (res.status === 401) {
-        await logoutFirebase()
-        router.replace('/kasir-login')
-        return
-      }
-
-      const data = await res.json()
-      if (res.status === 403) {
-        await logoutFirebase()
-        router.replace('/kasir-login')
-        return
-      }
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Gagal memuat dashboard kasir')
-      }
-
-      const payload = data as KasirDashboardResponse
-      setStatus(payload.status)
-      setStats(payload.stats)
-      setRecentScans(payload.recentScans)
-      if (payload.todaySummary) setTodaySummary(payload.todaySummary)
-      if (payload.scanBreakdown) setScanBreakdown(payload.scanBreakdown)
-      if (payload.todayTransactions) setTodayTransactions(payload.todayTransactions)
-      cacheJson('kasirDashboard', payload)
-    } catch (err: any) {
-      const cachedDashboard = getCachedJson<KasirDashboardResponse>('kasirDashboard')
-      if (cachedDashboard) {
-        setStatus(cachedDashboard.status)
-        setStats(cachedDashboard.stats)
-        setRecentScans(cachedDashboard.recentScans)
-        if (cachedDashboard.todaySummary) setTodaySummary(cachedDashboard.todaySummary)
-        if (cachedDashboard.scanBreakdown) setScanBreakdown(cachedDashboard.scanBreakdown)
-        if (cachedDashboard.todayTransactions) setTodayTransactions(cachedDashboard.todayTransactions)
-        setOfflineMode(true)
-        setError('Mode offline aktif. Data dashboard memakai cache terakhir.')
-      } else {
-        setError(err?.message || 'Terjadi kesalahan memuat dashboard')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const handleCreateTransaction = async (e: FormEvent) => {
     e.preventDefault()
@@ -406,51 +316,24 @@ export default function KasirPage() {
     }
 
     try {
-      if (!navigator.onLine || offlineMode) {
-        const queued = await queueOfflineTransaction(transactionPayload, cashierEmail)
-        setReceipt(queued.receipt)
-        setCardUid('')
-        setQuantity(1)
-        await refreshPendingTransactions()
-        alert('Transaksi disimpan offline dan akan disinkronkan saat internet kembali.')
-        return
-      }
-
-      const token = await getFirebaseIdToken()
-      const res = await fetch('/api/create-transaction', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(transactionPayload)
-      })
-
-      const data = await res.json()
-      if (!res.ok) {
-        alert('Gagal membuat transaksi: ' + (data.error || 'Terjadi kesalahan'))
-        return
-      }
-
-      setReceipt(data.receipt)
+      // Selalu simpan lokal dulu
+      const { receipt: r } = await saveTransactionLocally(transactionPayload, cashierEmail)
+      setReceipt(r)
       setCardUid('')
       setQuantity(1)
-
-      setTimeout(() => {
-        fetchDashboard()
-      }, 500)
-    } catch (err: any) {
-      try {
-        const queued = await queueOfflineTransaction(transactionPayload, cashierEmail)
-        setReceipt(queued.receipt)
-        setCardUid('')
-        setQuantity(1)
-        setOfflineMode(true)
-        await refreshPendingTransactions()
-        alert('Internet/server tidak tersedia. Transaksi disimpan offline sementara.')
-      } catch (queueError: any) {
-        alert('Error: ' + (queueError?.message || err?.message || 'Terjadi kesalahan'))
+      loadLocalDashboard()
+      // Fire-and-forget sync bila online
+      if (navigator.onLine) {
+        getFirebaseIdToken().then(token =>
+          syncAllLocalData(() => Promise.resolve(token)).then(result => {
+            if (result.syncedTx > 0 || result.syncedScans > 0) {
+              setLastSyncTime(new Date().toLocaleTimeString())
+            }
+          })
+        )
       }
+    } catch (err: any) {
+      alert('Error: ' + (err?.message || 'Terjadi kesalahan'))
     } finally {
       setTransactionLoading(false)
     }
@@ -508,6 +391,7 @@ export default function KasirPage() {
   }
 
   const handleLogout = async () => {
+    stopPeriodicSync()
     clearOfflineSession()
     if (!offlineMode) {
       await logoutFirebase()
@@ -534,12 +418,12 @@ export default function KasirPage() {
             <h1 className="mt-1.5 text-2xl font-bold text-slate-900">Dashboard Kasir</h1>
             <p className="mt-1 text-sm text-slate-400">Buat transaksi dan lihat ringkasan penjualan tiket.</p>
             <p className="mt-1 text-xs text-slate-400">
-              {offlineMode ? 'Mode offline aktif' : 'Online'} &middot; {pendingTransactions} transaksi menunggu sinkron
+              {offlineMode ? 'Mode offline' : 'Online'} &middot; {lastSyncTime ? `Sync ${lastSyncTime}` : 'Data lokal'}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button onClick={fetchConfig} className="rounded-xl bg-white border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 shadow-card transition-all hover:border-slate-300 hover:shadow-card-hover active:scale-[0.97]" title="Refresh data dari server">
-              Refresh Data
+            <button onClick={() => loadConfig(true)} className="rounded-xl bg-white border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 shadow-card transition-all hover:border-slate-300 hover:shadow-card-hover active:scale-[0.97]" title="Refresh konfigurasi dari server">
+              Refresh Config
             </button>
             <button onClick={handleLogout} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-card transition-all hover:border-slate-300 hover:shadow-card-hover active:scale-[0.97]">
               Logout
@@ -789,7 +673,7 @@ export default function KasirPage() {
                       Export PDF
                     </button>
                     <button
-                      onClick={fetchDashboard}
+                      onClick={loadLocalDashboard}
                       disabled={loading}
                       className="rounded-xl bg-sky-600 px-4 py-2 text-xs font-medium text-white shadow-card transition-all hover:bg-sky-700 active:scale-[0.97] disabled:opacity-50"
                     >
@@ -910,7 +794,7 @@ export default function KasirPage() {
                     <p className="text-sm text-slate-400">Scan terbaru untuk kasir</p>
                   </div>
                   <button
-                    onClick={fetchDashboard}
+                    onClick={loadLocalDashboard}
                     disabled={loading}
                     className="rounded-xl bg-sky-600 px-4 py-2 text-xs font-medium text-white shadow-card transition-all hover:bg-sky-700 active:scale-[0.97] disabled:opacity-50"
                   >
@@ -946,7 +830,7 @@ export default function KasirPage() {
                     <p className="text-sm text-slate-400">7 jam dan 5 hari terakhir</p>
                   </div>
                   <button
-                    onClick={fetchDashboard}
+                    onClick={loadLocalDashboard}
                     disabled={loading}
                     className="rounded-xl bg-sky-600 px-4 py-2 text-xs font-medium text-white shadow-card transition-all hover:bg-sky-700 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
                   >
