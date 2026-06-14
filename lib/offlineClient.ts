@@ -47,6 +47,8 @@ const OFFLINE_SESSION_KEY = 'kolamRenang.offlineSession'
 const CACHE_PREFIX = 'kolamRenang.cache.'
 const CONFIG_CACHE_PREFIX = 'kolamRenang.config.'
 const CONFIG_TTL_MS = 60 * 60 * 1000
+const DATA_CACHE_PREFIX = 'kolamRenang.data.'
+const DATA_CACHE_TTL_MS = 15 * 60 * 1000
 
 async function getDB() {
   return openDB(DB_NAME, DB_VERSION, {
@@ -466,6 +468,39 @@ export function getCachedConfig<T>(key: string): T | null {
 export function clearConfigCache(): void {
   if (typeof window === 'undefined') return
   const keys = Object.keys(localStorage).filter(k => k.startsWith(CONFIG_CACHE_PREFIX))
+  keys.forEach(k => localStorage.removeItem(k))
+}
+
+// --- Data Cache (15-minute TTL for admin dashboard/report data) ---
+
+export function cacheData<T>(key: string, value: T): void {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(`${DATA_CACHE_PREFIX}${key}`, JSON.stringify({
+    value,
+    cachedAt: Date.now()
+  }))
+}
+
+export function getCachedData<T>(key: string): T | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(`${DATA_CACHE_PREFIX}${key}`)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!parsed || !parsed.cachedAt) return null
+    if (Date.now() - parsed.cachedAt > DATA_CACHE_TTL_MS) {
+      localStorage.removeItem(`${DATA_CACHE_PREFIX}${key}`)
+      return null
+    }
+    return parsed.value as T
+  } catch {
+    return null
+  }
+}
+
+export function clearDataCache(): void {
+  if (typeof window === 'undefined') return
+  const keys = Object.keys(localStorage).filter(k => k.startsWith(DATA_CACHE_PREFIX))
   keys.forEach(k => localStorage.removeItem(k))
 }
 

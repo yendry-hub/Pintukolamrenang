@@ -4,7 +4,7 @@ import { useRouter } from 'next/router'
 import StatusCard from '@/components/StatusCard'
 import CardManagement from '@/components/CardManagement'
 import { getFirebaseIdToken, logoutFirebase, onFirebaseAuthStateChanged } from '@/lib/firebase'
-import { cacheJson, clearOfflineSession, getCachedJson, getOfflineSession, setOfflineSession } from '@/lib/offlineClient'
+import { cacheData, cacheJson, clearOfflineSession, getCachedData, getCachedJson, getOfflineSession, setOfflineSession } from '@/lib/offlineClient'
 import type { GateStatus, ScanLog, TicketStats, Transaction, PrintoutConfig } from '@/lib/types'
 import { generateReceipt } from '@/lib/receipt'
 
@@ -70,14 +70,14 @@ export default function AdminPage() {
   const [priceMessage, setPriceMessage] = useState<string | null>(null)
   const [ticketTypeRows, setTicketTypeRows] = useState<{ name: string; price: number }[]>([])
   const [ticketTypeSaving, setTicketTypeSaving] = useState(false)
-  const [reportFilter, setReportFilter] = useState<'today' | 'week' | 'month' | 'all'>('today')
+  const [reportFilter, setReportFilter] = useState<'today' | 'week' | 'month'>('today')
   const [reportStartDate, setReportStartDate] = useState('')
   const [reportEndDate, setReportEndDate] = useState('')
   const [salesReport, setSalesReport] = useState<any>(null)
   const [reportLoading, setReportLoading] = useState(false)
   const [visitorReport, setVisitorReport] = useState<any>(null)
   const [visitorReportLoading, setVisitorReportLoading] = useState(false)
-  const [visitorReportFilter, setVisitorReportFilter] = useState<'today' | 'week' | 'month' | 'all'>('today')
+  const [visitorReportFilter, setVisitorReportFilter] = useState<'today' | 'week' | 'month'>('today')
   const [visitorStartDate, setVisitorStartDate] = useState('')
   const [visitorEndDate, setVisitorEndDate] = useState('')
   const [offlineMode, setOfflineMode] = useState(false)
@@ -85,7 +85,7 @@ export default function AdminPage() {
   const [paymentMethods, setPaymentMethods] = useState<string[]>(['Tunai', 'Kartu Debit', 'Kartu Kredit', 'E-Wallet'])
   const [todaySummary, setTodaySummary] = useState<{ transactionCount: number; revenue: number }>({ transactionCount: 0, revenue: 0 })
   const [transactions, setTransactions] = useState<Transaction[]>([])
-  const [txFilter, setTxFilter] = useState<'today' | 'week' | 'month' | 'all'>('today')
+  const [txFilter, setTxFilter] = useState<'today' | 'week' | 'month'>('today')
   const [txLoading, setTxLoading] = useState(false)
   const [printReceipt, setPrintReceipt] = useState<string | null>(null)
   const [printoutConfig, setPrintoutConfig] = useState<PrintoutConfig>({
@@ -134,6 +134,15 @@ export default function AdminPage() {
 
   const fetchTransactions = async (filter = txFilter) => {
     setTxLoading(true)
+
+    const cacheKey = `transactions.${filter}`
+    const cached = getCachedData<any>(cacheKey)
+    if (cached) {
+      setTransactions(cached)
+      setTxLoading(false)
+      return
+    }
+
     try {
       const token = await getFirebaseIdToken()
       const res = await fetch(`/api/transactions?filter=${filter}`, {
@@ -147,9 +156,15 @@ export default function AdminPage() {
       const data = await res.json()
       if (res.ok) {
         setTransactions(data.transactions)
+        cacheData(cacheKey, data.transactions)
       }
     } catch {
-      setError('Gagal memuat transaksi')
+      const cachedTransactions = getCachedData<any>(cacheKey)
+      if (cachedTransactions) {
+        setTransactions(cachedTransactions)
+      } else {
+        setError('Gagal memuat transaksi')
+      }
     } finally {
       setTxLoading(false)
     }
@@ -240,7 +255,7 @@ export default function AdminPage() {
   }, [])
 
   const loadCachedAdminData = () => {
-    const cachedDashboard = getCachedJson<AdminDashboardResponse>('adminDashboard')
+    const cachedDashboard = getCachedData<AdminDashboardResponse>('adminDashboard')
     const cachedPrices = getCachedJson<Record<string, number>>('ticketPrices')
 
     if (cachedDashboard) {
@@ -311,6 +326,16 @@ export default function AdminPage() {
     setLoading(true)
     setError(null)
 
+    const cached = getCachedData<AdminDashboardResponse>('adminDashboard')
+    if (cached) {
+      setStatus(cached.status)
+      setStats(cached.stats)
+      setRecentScans(cached.recentScans)
+      if (cached.todaySummary) setTodaySummary(cached.todaySummary)
+      setLoading(false)
+      return
+    }
+
     try {
       const token = await getFirebaseIdToken()
       const res = await fetch('/api/admin-dashboard', {
@@ -341,9 +366,9 @@ export default function AdminPage() {
       setStats(payload.stats)
       setRecentScans(payload.recentScans)
       if (payload.todaySummary) setTodaySummary(payload.todaySummary)
-      cacheJson('adminDashboard', payload)
+      cacheData('adminDashboard', payload)
     } catch (err: any) {
-      const cachedDashboard = getCachedJson<AdminDashboardResponse>('adminDashboard')
+      const cachedDashboard = getCachedData<AdminDashboardResponse>('adminDashboard')
       if (cachedDashboard) {
         setStatus(cachedDashboard.status)
         setStats(cachedDashboard.stats)
@@ -360,6 +385,15 @@ export default function AdminPage() {
 
   const fetchSalesReport = async (filter: string = reportFilter, startDate?: string, endDate?: string) => {
     setReportLoading(true)
+
+    const cacheKey = `salesReport.${filter}${startDate && endDate ? `.${startDate}.${endDate}` : ''}`
+    const cached = getCachedData<any>(cacheKey)
+    if (cached) {
+      setSalesReport(cached)
+      setReportLoading(false)
+      return
+    }
+
     try {
       const token = await getFirebaseIdToken()
       let url = `/api/sales-report?filter=${filter}`
@@ -372,11 +406,11 @@ export default function AdminPage() {
       const data = await res.json()
       if (res.ok) {
         setSalesReport(data)
-        cacheJson(`salesReport.${filter}`, data)
+        cacheData(cacheKey, data)
       }
     } catch (err) {
       console.error('Failed to fetch sales report:', err)
-      const cachedReport = getCachedJson<any>(`salesReport.${filter}`)
+      const cachedReport = getCachedData<any>(cacheKey)
       if (cachedReport) {
         setSalesReport(cachedReport)
       }
@@ -388,6 +422,15 @@ export default function AdminPage() {
   const fetchVisitorReport = async (filter: string = visitorReportFilter, startDate?: string, endDate?: string) => {
     setVisitorReportLoading(true)
     setError(null)
+
+    const cacheKey = `visitorReport.${filter}${startDate && endDate ? `.${startDate}.${endDate}` : ''}`
+    const cached = getCachedData<any>(cacheKey)
+    if (cached) {
+      setVisitorReport(cached)
+      setVisitorReportLoading(false)
+      return
+    }
+
     try {
       const token = await getFirebaseIdToken()
       let url = `/api/laporan-pengunjung?filter=${filter}`
@@ -405,11 +448,17 @@ export default function AdminPage() {
       const data = await res.json()
       if (res.ok) {
         setVisitorReport(data)
+        cacheData(cacheKey, data)
       } else {
         setError(data.error || 'Gagal memuat laporan pengunjung')
       }
     } catch (err: any) {
-      setError(err?.message || 'Gagal memuat laporan pengunjung')
+      const cachedReport = getCachedData<any>(cacheKey)
+      if (cachedReport) {
+        setVisitorReport(cachedReport)
+      } else {
+        setError(err?.message || 'Gagal memuat laporan pengunjung')
+      }
     } finally {
       setVisitorReportLoading(false)
     }
@@ -919,7 +968,7 @@ export default function AdminPage() {
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <div className="flex bg-slate-100 p-0.5 rounded-lg">
-                        {(['today', 'week', 'month', 'all'] as const).map((f) => (
+                        {(['today', 'week', 'month'] as const).map((f) => (
                           <button
                             key={f}
                             onClick={() => { setReportFilter(f); setReportStartDate(''); setReportEndDate('') }}
@@ -927,7 +976,7 @@ export default function AdminPage() {
                               reportFilter === f && !reportStartDate ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
                             }`}
                           >
-                            {f === 'today' ? 'Hari Ini' : f === 'week' ? 'Minggu Ini' : f === 'month' ? 'Bulan' : 'Semua'}
+                            {f === 'today' ? 'Hari Ini' : f === 'week' ? 'Minggu Ini' : 'Bulan'}
                           </button>
                         ))}
                       </div>
@@ -1101,7 +1150,7 @@ export default function AdminPage() {
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <div className="flex bg-slate-100 p-0.5 rounded-lg">
-                        {(['today', 'week', 'month', 'all'] as const).map((f) => (
+                        {(['today', 'week', 'month'] as const).map((f) => (
                           <button
                             key={f}
                             onClick={() => { setVisitorReportFilter(f); setVisitorStartDate(''); setVisitorEndDate('') }}
@@ -1109,7 +1158,7 @@ export default function AdminPage() {
                               visitorReportFilter === f && !visitorStartDate ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
                             }`}
                           >
-                            {f === 'today' ? 'Hari Ini' : f === 'week' ? 'Minggu Ini' : f === 'month' ? 'Bulan' : 'Semua'}
+                            {f === 'today' ? 'Hari Ini' : f === 'week' ? 'Minggu Ini' : 'Bulan'}
                           </button>
                         ))}
                       </div>
@@ -1372,7 +1421,7 @@ export default function AdminPage() {
                   </div>
                   <div className="flex gap-2">
                     <div className="flex bg-slate-100 p-0.5 rounded-lg">
-                      {(['today', 'week', 'month', 'all'] as const).map((f) => (
+                      {(['today', 'week', 'month'] as const).map((f) => (
                         <button
                           key={f}
                           onClick={() => { setTxFilter(f); fetchTransactions(f); }}
@@ -1380,7 +1429,7 @@ export default function AdminPage() {
                             txFilter === f ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
                           }`}
                         >
-                          {f === 'today' ? 'Hari Ini' : f === 'week' ? 'Minggu' : f === 'month' ? 'Bulan' : 'Semua'}
+                          {f === 'today' ? 'Hari Ini' : f === 'week' ? 'Minggu' : 'Bulan'}
                         </button>
                       ))}
                     </div>
