@@ -195,7 +195,7 @@ export async function queueOfflineTransaction(
   payload: OfflineTransactionPayload,
   cashierEmail: string | null
 ) {
-  const localId = `OFF-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
+  const localId = `OFF-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`
   const createdAt = new Date().toISOString()
   const receipt = generateOfflineReceipt({
     receiptId: localId,
@@ -509,7 +509,7 @@ export async function saveTransactionLocally(
   payload: OfflineTransactionPayload,
   cashierEmail: string | null
 ): Promise<{ localId: string; receipt: string }> {
-  const localId = `LOC-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
+  const localId = `LOC-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`
   const createdAt = new Date().toISOString()
   const receipt = generateOfflineReceipt({
     receiptId: localId,
