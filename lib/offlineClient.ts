@@ -37,7 +37,7 @@ type PendingTransaction = {
 }
 
 const DB_NAME = 'kolam-renang-cache'
-const DB_VERSION = 3
+const DB_VERSION = 4
 const STORE_PENDING_TRANSACTIONS = 'pendingTransactions'
 const STORE_LOCAL_TRANSACTIONS = 'localTransactions'
 const STORE_LOCAL_SCAN_LOGS = 'localScanLogs'
