@@ -288,7 +288,6 @@ function generateOfflineReceipt(data: {
     separator,
     '',
     'BUKTI PEMBAYARAN TIKET',
-    'MODE OFFLINE - BELUM SINKRON',
     separator,
     '',
     formatReceiptLine('No Struk', data.receiptId, lineLength),
