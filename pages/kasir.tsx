@@ -13,6 +13,9 @@ import {
   syncAllLocalData,
   startPeriodicSync,
   stopPeriodicSync,
+  pullRemoteData,
+  startPeriodicPull,
+  stopPeriodicPull,
   cacheConfig,
   getCachedConfig,
 } from '@/lib/offlineClient'
@@ -190,7 +193,7 @@ export default function KasirPage() {
         gateId,
         uid: gateUid || undefined,
         ticketType: gateTicketType,
-        note: `manual kasir — ${espMsg}`,
+        note: cashierEmail || 'kasir',
       })
     }
 
@@ -264,13 +267,20 @@ export default function KasirPage() {
           setLastSyncTime(new Date().toLocaleTimeString())
         })
       )
-      // Periodic sync (15 menit)
+      // Trigger initial pull
+      getFirebaseIdToken().then(token =>
+        pullRemoteData(() => Promise.resolve(token)).then(() => loadLocalDashboard())
+      )
+      // Periodic sync (15 menit) — push local data ke Firestore
       startPeriodicSync(15 * 60 * 1000, getFirebaseIdToken)
+      // Periodic pull (1 jam) — refresh IndexedDB dari Firestore
+      startPeriodicPull(60 * 60 * 1000, getFirebaseIdToken)
       // Gate status polling tiap 30 detik
       fetchGateStatus()
       const gateTimer = setInterval(fetchGateStatus, 30_000)
       return () => {
         stopPeriodicSync()
+        stopPeriodicPull()
         clearInterval(gateTimer)
       }
     })

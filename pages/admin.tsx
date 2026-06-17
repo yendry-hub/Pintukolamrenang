@@ -1316,7 +1316,7 @@ export default function AdminPage() {
                                   <th className="text-left py-2 px-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">UID</th>
                                   <th className="text-left py-2 px-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Gate</th>
                                   <th className="text-left py-2 px-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Waktu</th>
-                                  <th className="text-left py-2 px-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Status</th>
+                                  <th className="text-left py-2 px-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Kasir</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -1329,15 +1329,7 @@ export default function AdminPage() {
                                         ? new Date(scan.createdAt._seconds * 1000).toLocaleString('id-ID')
                                         : scan.scannedAt || '-'}
                                     </td>
-                                    <td className="py-2 px-3 text-xs">
-                                      <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                                        scan.status === 'VALID' || scan.status === 'OPEN' ? 'bg-emerald-50 text-emerald-700' :
-                                        scan.status === 'INVALID' ? 'bg-red-50 text-red-700' :
-                                        'bg-slate-50 text-slate-500'
-                                      }`}>
-                                        {scan.status}
-                                      </span>
-                                    </td>
+                                    <td className="py-2 px-3 text-xs text-slate-600">{scan.note || '-'}</td>
                                   </tr>
                                 ))}
                                 {item.items.length > 50 && (

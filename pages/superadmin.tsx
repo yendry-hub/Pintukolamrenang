@@ -592,7 +592,7 @@ export default function SuperAdminPage() {
                                   <th className="text-left py-2 px-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">UID</th>
                                   <th className="text-left py-2 px-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Gate</th>
                                   <th className="text-left py-2 px-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Waktu</th>
-                                  <th className="text-left py-2 px-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Status</th>
+                                  <th className="text-left py-2 px-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Kasir</th>
                                   <th className="text-right py-2 px-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Aksi</th>
                                 </tr>
                               </thead>
@@ -624,18 +624,7 @@ export default function SuperAdminPage() {
                                               ? new Date(scan.createdAt._seconds * 1000).toLocaleString('id-ID')
                                               : scan.scannedAt || '-'}
                                           </td>
-                                          <td className="py-2 px-3">
-                                            <select
-                                              value={editFields.status || ''}
-                                              onChange={(e) => setEditFields({ ...editFields, status: e.target.value })}
-                                              className="rounded border border-slate-200 px-2 py-1 text-xs focus:border-indigo-500 focus:outline-none"
-                                            >
-                                              <option value="OPEN">OPEN</option>
-                                              <option value="VALID">VALID</option>
-                                              <option value="INVALID">INVALID</option>
-                                              <option value="REJECTED">REJECTED</option>
-                                            </select>
-                                          </td>
+                                          <td className="py-2 px-3 text-xs text-slate-600">{scan.note || '-'}</td>
                                           <td className="py-2 px-3 text-right">
                                             <div className="flex items-center justify-end gap-1">
                                               <button onClick={() => saveScanLog(scan.id)} disabled={saving}
@@ -658,19 +647,11 @@ export default function SuperAdminPage() {
                                               ? new Date(scan.createdAt._seconds * 1000).toLocaleString('id-ID')
                                               : scan.scannedAt || '-'}
                                           </td>
-                                          <td className="py-2 px-3 text-xs">
-                                            <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                                              scan.status === 'VALID' || scan.status === 'OPEN' ? 'bg-emerald-50 text-emerald-700' :
-                                              scan.status === 'INVALID' ? 'bg-red-50 text-red-700' :
-                                              'bg-slate-50 text-slate-500'
-                                            }`}>
-                                              {scan.status}
-                                            </span>
-                                          </td>
+                                          <td className="py-2 px-3 text-xs text-slate-600">{scan.note || '-'}</td>
                                           <td className="py-2 px-3 text-right">
                                             <div className="flex items-center justify-end gap-1">
                                               <button
-                                                onClick={() => startEdit(scan.id, { uid: scan.uid, gate: scan.gate || scan.gateId || '', status: scan.status })}
+                                                onClick={() => startEdit(scan.id, { uid: scan.uid, gate: scan.gate || scan.gateId || '' })}
                                                 className="rounded bg-indigo-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-indigo-700 transition-all"
                                               >
                                                 Edit

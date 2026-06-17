@@ -860,6 +860,82 @@ export async function syncAllLocalData(getToken: () => Promise<string>): Promise
   return { syncedTx, syncedScans, errors }
 }
 
+// ==== Periodic Pull (refresh IndexedDB from Firestore) ====
+
+export async function pullRemoteData(getToken: () => Promise<string>): Promise<{
+  cardsRefreshed: boolean
+  configRefreshed: boolean
+  errors: string[]
+}> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return { cardsRefreshed: false, configRefreshed: false, errors: [] }
+  }
+
+  const errors: string[] = []
+  let cardsRefreshed = false
+  let configRefreshed = false
+
+  const token = await getToken()
+
+  // 1. Refresh card cache
+  try {
+    const res = await fetch('/api/get-cards', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    if (res.ok) {
+      const data = await res.json()
+      if (data.cards) {
+        await cacheCardsLocally(data.cards)
+        cardsRefreshed = true
+      }
+    }
+  } catch (e: any) {
+    errors.push(`Gagal refresh cards: ${e.message}`)
+  }
+
+  // 2. Refresh ticket config
+  try {
+    const res = await fetch('/api/get-ticket-config')
+    if (res.ok) {
+      const data = await res.json()
+      if (data.ticketTypes?.length) {
+        cacheConfig('ticketTypes', data.ticketTypes)
+      }
+      if (data.paymentMethods?.length) {
+        cacheConfig('paymentMethods', data.paymentMethods)
+      }
+      if (data.prices) {
+        cacheConfig('ticketPrices', data.prices)
+      }
+      configRefreshed = true
+    }
+  } catch (e: any) {
+    errors.push(`Gagal refresh config: ${e.message}`)
+  }
+
+  return { cardsRefreshed, configRefreshed, errors }
+}
+
+let _pullTimer: ReturnType<typeof setInterval> | null = null
+
+export function startPeriodicPull(
+  intervalMs: number,
+  getToken: () => Promise<string>
+): () => void {
+  stopPeriodicPull()
+  _pullTimer = setInterval(async () => {
+    await pullRemoteData(getToken)
+  }, intervalMs)
+  return stopPeriodicPull
+}
+
+export function stopPeriodicPull(): void {
+  if (_pullTimer !== null) {
+    clearInterval(_pullTimer)
+    _pullTimer = null
+  }
+}
+
 export function startPeriodicSync(
   intervalMs: number,
   getToken: () => Promise<string>
