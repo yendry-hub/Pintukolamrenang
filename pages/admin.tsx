@@ -4,7 +4,7 @@ import { useRouter } from 'next/router'
 import StatusCard from '@/components/StatusCard'
 import CardManagement from '@/components/CardManagement'
 import { getFirebaseIdToken, logoutFirebase, onFirebaseAuthStateChanged } from '@/lib/firebase'
-import { cacheData, cacheJson, clearOfflineSession, getCachedData, getCachedJson, getOfflineSession, setOfflineSession } from '@/lib/offlineClient'
+import { cacheConfig, cacheData, cacheJson, clearOfflineSession, getCachedData, getCachedJson, getOfflineSession, setOfflineSession } from '@/lib/offlineClient'
 import type { GateStatus, ScanLog, TicketStats, Transaction, PrintoutConfig } from '@/lib/types'
 import { generateReceipt } from '@/lib/receipt'
 
@@ -279,14 +279,17 @@ export default function AdminPage() {
         if (data.ticketTypes && data.ticketTypes.length > 0) {
           setTicketTypes(data.ticketTypes)
           cacheJson('ticketTypes', data.ticketTypes)
+          cacheConfig('ticketTypes', data.ticketTypes)
         }
         if (data.paymentMethods && data.paymentMethods.length > 0) {
           setPaymentMethods(data.paymentMethods)
           cacheJson('paymentMethods', data.paymentMethods)
+          cacheConfig('paymentMethods', data.paymentMethods)
         }
         if (data.prices) {
           setTicketPrices(data.prices)
           cacheJson('ticketPrices', data.prices)
+          cacheConfig('ticketPrices', data.prices)
         }
         // populate ticketTypeRows from both
         const types = data.ticketTypes?.length ? data.ticketTypes : DEFAULT_TICKET_TYPES
@@ -312,6 +315,7 @@ export default function AdminPage() {
         console.log('Admin fetched prices:', data.prices)
         setTicketPrices(data.prices)
         cacheJson('ticketPrices', data.prices)
+        cacheConfig('ticketPrices', data.prices)
       }
     } catch (err) {
       console.error('Failed to fetch prices in admin:', err)
@@ -497,6 +501,7 @@ export default function AdminPage() {
     try {
       if (!navigator.onLine || offlineMode) {
         cacheJson('ticketPrices', ticketPrices)
+        cacheConfig('ticketPrices', ticketPrices)
         setPriceMessage('Harga disimpan lokal. Simpan ulang saat online untuk mengirim ke server.')
         setTimeout(() => setPriceMessage(null), 4000)
         return
@@ -521,6 +526,7 @@ export default function AdminPage() {
 
       setPriceMessage('Harga tiket berhasil disimpan!')
       cacheJson('ticketPrices', ticketPrices)
+      cacheConfig('ticketPrices', ticketPrices)
       setTimeout(() => setPriceMessage(null), 3000)
     } catch (err: any) {
       console.error('Error saving prices:', err)
@@ -928,7 +934,9 @@ export default function AdminPage() {
                           setTicketTypes(data.ticketTypes)
                           setTicketPrices(data.prices)
                           cacheJson('ticketTypes', data.ticketTypes)
+                          cacheConfig('ticketTypes', data.ticketTypes)
                           cacheJson('ticketPrices', data.prices)
+                          cacheConfig('ticketPrices', data.prices)
                         } else {
                           setPriceMessage('Error: ' + (data.error || 'Gagal menyimpan'))
                         }

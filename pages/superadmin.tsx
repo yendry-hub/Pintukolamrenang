@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import { getFirebaseIdToken, logoutFirebase, onFirebaseAuthStateChanged } from '@/lib/firebase'
+import { pullRemoteData } from '@/lib/offlineClient'
 
 export default function SuperAdminPage() {
   const router = useRouter()
@@ -133,6 +134,7 @@ export default function SuperAdminPage() {
         showMessage('success', 'Transaksi berhasil diperbarui')
         cancelEdit()
         fetchSalesReport()
+        getFirebaseIdToken().then(t => pullRemoteData(() => Promise.resolve(t)))
       } else {
         showMessage('error', data.error || 'Gagal menyimpan')
       }
@@ -152,6 +154,7 @@ export default function SuperAdminPage() {
       if (res.ok) {
         showMessage('success', 'Transaksi berhasil dihapus')
         fetchSalesReport()
+        getFirebaseIdToken().then(t => pullRemoteData(() => Promise.resolve(t)))
       } else {
         const data = await res.json()
         showMessage('error', data.error || 'Gagal menghapus')
@@ -173,6 +176,7 @@ export default function SuperAdminPage() {
         showMessage('success', 'Scan log berhasil diperbarui')
         cancelEdit()
         fetchVisitorReport()
+        getFirebaseIdToken().then(t => pullRemoteData(() => Promise.resolve(t)))
       } else {
         showMessage('error', data.error || 'Gagal menyimpan')
       }
@@ -192,6 +196,7 @@ export default function SuperAdminPage() {
       if (res.ok) {
         showMessage('success', 'Scan log berhasil dihapus')
         fetchVisitorReport()
+        getFirebaseIdToken().then(t => pullRemoteData(() => Promise.resolve(t)))
       } else {
         const data = await res.json()
         showMessage('error', data.error || 'Gagal menghapus')

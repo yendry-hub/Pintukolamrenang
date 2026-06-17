@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { getFirebaseIdToken } from '@/lib/firebase'
+import { cacheCardsLocally } from '@/lib/offlineClient'
 
 const DEFAULT_TICKET_TYPES: string[] = ['Tiket Harian', 'Member', 'VIP', 'Paket Keluarga', 'Tiket Anak', 'Tiket Dewasa']
 
@@ -64,6 +65,7 @@ export default function CardManagement({ ticketTypes: propTicketTypes }: Props) 
       if (!res.ok) throw new Error('Gagal memuat data kartu')
       const data = await res.json()
       setCards(data.cards)
+      await cacheCardsLocally(data.cards)
     } catch (err: any) {
       showMessage(err?.message || 'Gagal memuat data kartu', 'error')
     } finally {
