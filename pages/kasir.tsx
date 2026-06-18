@@ -33,12 +33,12 @@ const initialStats: TicketStats = {
 const DEFAULT_TICKET_TYPES: string[] = ['Tiket Harian', 'Member', 'VIP', 'Paket Keluarga', 'Tiket Anak', 'Tiket Dewasa']
 const DEFAULT_PAYMENT_METHODS = ['Tunai', 'Kartu Debit', 'Kartu Kredit', 'E-Wallet']
 const DEFAULT_TICKET_PRICES: Record<string, number> = {
-  'Tiket Harian': 50000,
-  Member: 100000,
-  VIP: 75000,
-  'Paket Keluarga': 200000,
-  'Tiket Anak': 30000,
-  'Tiket Dewasa': 50000
+  'Tiket Harian': 10000,
+  Member: 10000,
+  VIP: 7500,
+  'Paket Keluarga': 20000,
+  'Tiket Anak': 3000,
+  'Tiket Dewasa': 15000
 }
 
 function escapeHtml(text: string): string {

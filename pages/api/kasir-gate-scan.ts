@@ -33,7 +33,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const cardSnap = await cardRef.get()
       if (cardSnap.exists) {
         const card = cardSnap.data() || {}
-        scanEntry.ticketType = card.ticketType ?? ticketType ?? 'Tiket Harian'
+        scanEntry.ticketType = ticketType || card.ticketType || 'Tiket Harian'
         scanEntry.userName = card.userName || card.name || ''
 
         // Kurangi qtyAkses jika kartu punya kuota
