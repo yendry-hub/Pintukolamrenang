@@ -57,3 +57,18 @@ export type PrintoutConfig = {
   footerMessage1: string
   footerMessage2: string
 }
+
+export type SuperAdminChangeAction = 'EDIT_TRANSACTION' | 'DELETE_TRANSACTION' | 'EDIT_SCANLOG' | 'DELETE_SCANLOG'
+
+export type SuperAdminChange = {
+  id?: number
+  localId: string
+  action: SuperAdminChangeAction
+  targetId: string
+  collection: 'transactions' | 'scanLogs'
+  fields?: Record<string, any>
+  summary: string
+  superAdminEmail: string
+  createdAt: string
+  synced: number
+}

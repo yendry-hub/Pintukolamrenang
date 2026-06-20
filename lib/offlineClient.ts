@@ -1,5 +1,5 @@
 import { openDB } from 'idb'
-import type { TicketType } from '@/lib/types'
+import type { TicketType, SuperAdminChange, SuperAdminChangeAction } from '@/lib/types'
 
 export type OfflineRole = 'admin' | 'kasir'
 
@@ -37,11 +37,13 @@ type PendingTransaction = {
 }
 
 const DB_NAME = 'kolam-renang-cache'
-const DB_VERSION = 4
+const DB_VERSION = 7
 const STORE_PENDING_TRANSACTIONS = 'pendingTransactions'
 const STORE_LOCAL_TRANSACTIONS = 'localTransactions'
 const STORE_LOCAL_SCAN_LOGS = 'localScanLogs'
 const STORE_LOCAL_CARDS = 'localCards'
+const STORE_LOCAL_SUPER_ADMIN_CHANGES = 'localSuperAdminChanges'
+const STORE_LOCAL_REPORT_CACHE = 'localReportCache'
 const OFFLINE_CREDENTIALS_KEY = 'kolamRenang.offlineCredentials'
 const OFFLINE_SESSION_KEY = 'kolamRenang.offlineSession'
 const CACHE_PREFIX = 'kolamRenang.cache.'
@@ -71,6 +73,15 @@ async function getDB() {
       }
       if (!db.objectStoreNames.contains(STORE_LOCAL_CARDS)) {
         db.createObjectStore(STORE_LOCAL_CARDS, { keyPath: 'uid' })
+      }
+      if (!db.objectStoreNames.contains(STORE_LOCAL_SUPER_ADMIN_CHANGES)) {
+        const store = db.createObjectStore(STORE_LOCAL_SUPER_ADMIN_CHANGES, { keyPath: 'id', autoIncrement: true })
+        store.createIndex('createdAt', 'createdAt')
+        store.createIndex('synced', 'synced')
+        store.createIndex('action', 'action')
+      }
+      if (!db.objectStoreNames.contains(STORE_LOCAL_REPORT_CACHE)) {
+        db.createObjectStore(STORE_LOCAL_REPORT_CACHE, { keyPath: 'cacheKey' })
       }
     }
   })
@@ -379,6 +390,7 @@ export type LocalTransaction = {
 export type LocalScanLog = {
   id?: number
   localId: string
+  scanLogId?: string
   gateId: string
   uid?: string
   ticketType?: string
@@ -591,11 +603,11 @@ export async function getUnsyncedScanLogs(): Promise<LocalScanLog[]> {
   return db.getAllFromIndex(STORE_LOCAL_SCAN_LOGS, 'synced', 0)
 }
 
-export async function markScanLogSynced(id: number): Promise<void> {
+export async function markScanLogSynced(id: number, scanLogId?: string): Promise<void> {
   const db = await getDB()
   const item = await db.get(STORE_LOCAL_SCAN_LOGS, id)
   if (item) {
-    await db.put(STORE_LOCAL_SCAN_LOGS, { ...item, synced: 1 })
+    await db.put(STORE_LOCAL_SCAN_LOGS, { ...item, synced: 1, scanLogId: scanLogId || item.scanLogId })
   }
 }
 
@@ -620,6 +632,200 @@ export async function getLocalActiveMemberCount(): Promise<number> {
   const db = await getDB()
   const all = await db.getAll(STORE_LOCAL_CARDS)
   return all.filter(c => c.active && !c.blocked).length
+}
+
+// ===== Report Cache (IndexedDB, 15-min TTL) =====
+
+const REPORT_CACHE_TTL_MS = 15 * 60 * 1000
+
+export async function cacheReport<T>(cacheKey: string, data: T): Promise<void> {
+  const db = await getDB()
+  if (!db.objectStoreNames.contains(STORE_LOCAL_REPORT_CACHE)) return
+  const entry = {
+    cacheKey,
+    data,
+    cachedAt: Date.now()
+  }
+  await db.put(STORE_LOCAL_REPORT_CACHE, entry)
+}
+
+export async function getCachedReport<T>(cacheKey: string): Promise<T | null> {
+  const db = await getDB()
+  if (!db.objectStoreNames.contains(STORE_LOCAL_REPORT_CACHE)) return null
+  try {
+    const entry = await db.get(STORE_LOCAL_REPORT_CACHE, cacheKey)
+    if (!entry) return null
+    if (Date.now() - entry.cachedAt > REPORT_CACHE_TTL_MS) {
+      await db.delete(STORE_LOCAL_REPORT_CACHE, cacheKey)
+      return null
+    }
+    return entry.data as T
+  } catch {
+    return null
+  }
+}
+
+export async function clearReportCache(): Promise<void> {
+  const db = await getDB()
+  if (!db.objectStoreNames.contains(STORE_LOCAL_REPORT_CACHE)) return
+  const all = await db.getAllKeys(STORE_LOCAL_REPORT_CACHE)
+  for (const key of all) {
+    await db.delete(STORE_LOCAL_REPORT_CACHE, key)
+  }
+}
+
+// ===== Super Admin Change Log (local-first) =====
+
+export async function saveSuperAdminChange(change: {
+  action: SuperAdminChangeAction
+  targetId: string
+  collection: 'transactions' | 'scanLogs'
+  fields?: Record<string, any>
+  summary: string
+  superAdminEmail: string
+}): Promise<number> {
+  const db = await getDB()
+  const createdAt = new Date().toISOString()
+  const id = await db.add(STORE_LOCAL_SUPER_ADMIN_CHANGES, {
+    localId: `SA-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+    action: change.action,
+    targetId: change.targetId,
+    collection: change.collection,
+    fields: change.fields,
+    summary: change.summary,
+    superAdminEmail: change.superAdminEmail,
+    createdAt,
+    synced: 0
+  } satisfies SuperAdminChange)
+  return id as number
+}
+
+export async function getUnsyncedSuperAdminChanges(): Promise<SuperAdminChange[]> {
+  const db = await getDB()
+  return db.getAllFromIndex(STORE_LOCAL_SUPER_ADMIN_CHANGES, 'synced', 0)
+}
+
+export async function markSuperAdminChangeSynced(id: number): Promise<void> {
+  const db = await getDB()
+  const item = await db.get(STORE_LOCAL_SUPER_ADMIN_CHANGES, id)
+  if (item) {
+    await db.put(STORE_LOCAL_SUPER_ADMIN_CHANGES, { ...item, synced: 1 })
+  }
+}
+
+export async function getAllSuperAdminChanges(): Promise<SuperAdminChange[]> {
+  const db = await getDB()
+  const all = await db.getAll(STORE_LOCAL_SUPER_ADMIN_CHANGES)
+  return all.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+}
+
+export async function syncSuperAdminChanges(getToken: () => Promise<string>): Promise<{
+  synced: number
+  errors: string[]
+}> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return { synced: 0, errors: [] }
+  }
+
+  const errors: string[] = []
+  let synced = 0
+  const token = await getToken()
+  const changes = await getUnsyncedSuperAdminChanges()
+
+  if (!changes.length) return { synced: 0, errors: [] }
+
+  const db = await getDB()
+
+  for (const change of changes) {
+    try {
+      let url = ''
+      let method = ''
+      let body: any = {}
+
+      if (change.action === 'EDIT_TRANSACTION') {
+        url = '/api/manage-transaction'
+        method = 'PATCH'
+        body = { id: change.targetId, fields: change.fields }
+      } else if (change.action === 'DELETE_TRANSACTION') {
+        url = '/api/manage-transaction'
+        method = 'DELETE'
+        body = { id: change.targetId }
+      } else if (change.action === 'EDIT_SCANLOG') {
+        url = '/api/manage-scanlog'
+        method = 'PATCH'
+        body = { id: change.targetId, fields: change.fields }
+      } else if (change.action === 'DELETE_SCANLOG') {
+        url = '/api/manage-scanlog'
+        method = 'DELETE'
+        body = { id: change.targetId }
+      }
+
+      const res = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(body)
+      })
+
+      if (res.ok) {
+        if (change.id) {
+          await markSuperAdminChangeSynced(change.id)
+        }
+        synced++
+      } else {
+        const data = await res.json()
+        errors.push(`${change.summary}: ${data.error || res.statusText}`)
+      }
+    } catch (e: any) {
+      errors.push(`${change.summary}: ${e.message}`)
+    }
+  }
+
+  return { synced, errors }
+}
+
+// ===== Apply Super Admin Changes to Local Data =====
+
+export async function applySuperAdminChangeToLocalData(change: {
+  action: SuperAdminChangeAction
+  targetId: string
+  collection: 'transactions' | 'scanLogs'
+  fields?: Record<string, any>
+}): Promise<void> {
+  const db = await getDB()
+
+  if (change.collection === 'transactions') {
+    const all = await db.getAll(STORE_LOCAL_TRANSACTIONS)
+    const match = all.find(tx => tx.transactionId === change.targetId)
+
+    if (!match) return
+
+    if (change.action === 'DELETE_TRANSACTION') {
+      if (match.id) await db.delete(STORE_LOCAL_TRANSACTIONS, match.id)
+    } else if (change.action === 'EDIT_TRANSACTION' && change.fields) {
+      const updated = { ...match, ...change.fields }
+      if (match.id) await db.put(STORE_LOCAL_TRANSACTIONS, updated)
+    }
+  } else if (change.collection === 'scanLogs') {
+    const all = await db.getAll(STORE_LOCAL_SCAN_LOGS)
+    const match = all.find(sl => sl.scanLogId === change.targetId)
+
+    if (!match) return
+
+    if (change.action === 'DELETE_SCANLOG') {
+      if (match.id) await db.delete(STORE_LOCAL_SCAN_LOGS, match.id)
+    } else if (change.action === 'EDIT_SCANLOG' && change.fields) {
+      const gateIdMap: Record<string, string> = { 'Gate-A': 'Gate-A', 'Gate-B': 'Gate-B', 'gate-a': 'Gate-A', 'gate-b': 'Gate-B' }
+      const updated = {
+        ...match,
+        uid: change.fields.uid ?? match.uid,
+        gateId: change.fields.gate ? (gateIdMap[change.fields.gate] || change.fields.gate) : match.gateId,
+      }
+      if (match.id) await db.put(STORE_LOCAL_SCAN_LOGS, updated)
+    }
+  }
 }
 
 // --- Date Helpers (client-side, Jakarta/Asia) ---
@@ -667,7 +873,6 @@ export async function computeLocalDashboard(
   // Recent scans (hari ini, diurut descending)
   const recentScans = todayScanLogs
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .slice(0, 50)
     .map(s => ({
       uid: s.uid || 'Unknown',
       ticketType: s.ticketType || 'Unknown',
@@ -791,7 +996,8 @@ export async function syncAllLocalData(getToken: () => Promise<string>): Promise
           })
         })
         if (res.ok && scan.id) {
-          await markScanLogSynced(scan.id)
+          const data = await res.json()
+          await markScanLogSynced(scan.id, data.scanLogId)
           syncedScans++
         } else {
           errors.push(`Scan ${scan.localId}: ${res.status}`)

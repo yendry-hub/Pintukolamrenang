@@ -4,7 +4,7 @@ import { useRouter } from 'next/router'
 import StatusCard from '@/components/StatusCard'
 import CardManagement from '@/components/CardManagement'
 import { getFirebaseIdToken, logoutFirebase, onFirebaseAuthStateChanged } from '@/lib/firebase'
-import { cacheConfig, cacheData, cacheJson, clearOfflineSession, getCachedData, getCachedJson, getOfflineSession, setOfflineSession } from '@/lib/offlineClient'
+import { cacheConfig, cacheData, cacheJson, clearOfflineSession, getCachedData, getCachedJson, getOfflineSession, setOfflineSession, cacheReport, getCachedReport, clearReportCache } from '@/lib/offlineClient'
 import type { GateStatus, ScanLog, TicketStats, Transaction, PrintoutConfig } from '@/lib/types'
 import { generateReceipt } from '@/lib/receipt'
 
@@ -68,6 +68,8 @@ export default function AdminPage() {
   const [ticketPrices, setTicketPrices] = useState<Record<string, number>>(INITIAL_TICKET_PRICES)
   const [priceSaving, setPriceSaving] = useState(false)
   const [priceMessage, setPriceMessage] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshUsed, setRefreshUsed] = useState(false)
   const [ticketTypeRows, setTicketTypeRows] = useState<{ name: string; price: number }[]>([])
   const [ticketTypeSaving, setTicketTypeSaving] = useState(false)
   const [reportFilter, setReportFilter] = useState<'today' | 'week' | 'month'>('today')
@@ -132,15 +134,18 @@ export default function AdminPage() {
     setTimeout(() => setPrintoutMessage(null), 3000)
   }
 
-  const fetchTransactions = async (filter = txFilter) => {
+  const fetchTransactions = async (filter = txFilter, forceRefresh = false) => {
     setTxLoading(true)
 
-    const cacheKey = `transactions.${filter}`
-    const cached = getCachedData<any>(cacheKey)
-    if (cached) {
-      setTransactions(cached)
-      setTxLoading(false)
-      return
+    const cacheKey = `transactions:${filter}`
+
+    if (!forceRefresh) {
+      const cached = await getCachedReport<any>(cacheKey)
+      if (cached) {
+        setTransactions(cached)
+        setTxLoading(false)
+        return
+      }
     }
 
     try {
@@ -156,10 +161,10 @@ export default function AdminPage() {
       const data = await res.json()
       if (res.ok) {
         setTransactions(data.transactions)
-        cacheData(cacheKey, data.transactions)
+        await cacheReport(cacheKey, data.transactions)
       }
     } catch {
-      const cachedTransactions = getCachedData<any>(cacheKey)
+      const cachedTransactions = await getCachedReport<any>(cacheKey)
       if (cachedTransactions) {
         setTransactions(cachedTransactions)
       } else {
@@ -230,7 +235,7 @@ export default function AdminPage() {
       setUserEmail(user.email || null)
       setOfflineSession(user.email || 'admin', 'admin', false)
       fetchDashboard()
-      fetchConfig()
+      fetchTicketConfig()
     })
 
     return unsubscribe
@@ -240,7 +245,7 @@ export default function AdminPage() {
     const handleOnline = () => {
       setOfflineMode(false)
       fetchDashboard()
-      fetchConfig()
+      fetchTicketConfig()
     }
     const handleOffline = () => setOfflineMode(true)
 
@@ -271,7 +276,43 @@ export default function AdminPage() {
     setError('Mode offline aktif. Data dashboard memakai cache terakhir.')
   }
 
-  const fetchConfig = async () => {
+  const fetchTicketConfig = async () => {
+    try {
+      const res = await fetch('/api/get-ticket-config')
+      if (res.ok) {
+        const data = await res.json()
+        if (data.ticketTypes && data.ticketTypes.length > 0) {
+          setTicketTypes(data.ticketTypes)
+          cacheJson('ticketTypes', data.ticketTypes)
+        }
+        if (data.paymentMethods && data.paymentMethods.length > 0) {
+          setPaymentMethods(data.paymentMethods)
+          cacheJson('paymentMethods', data.paymentMethods)
+        }
+        if (data.prices) {
+          setTicketPrices(data.prices)
+          cacheJson('ticketPrices', data.prices)
+        }
+        const types = data.ticketTypes?.length ? data.ticketTypes : DEFAULT_TICKET_TYPES
+        const prices = data.prices || INITIAL_TICKET_PRICES
+        setTicketTypeRows(types.map((t: string) => ({ name: t, price: prices[t] || 0 })))
+      }
+    } catch (err) {
+      console.error('Failed to fetch config:', err)
+      const cachedTypes = getCachedJson<string[]>('ticketTypes')
+      if (cachedTypes) setTicketTypes(cachedTypes)
+      const cachedMethods = getCachedJson<string[]>('paymentMethods')
+      if (cachedMethods) setPaymentMethods(cachedMethods)
+      const cachedPrices = getCachedJson<Record<string, number>>('ticketPrices')
+      if (cachedPrices) setTicketPrices(cachedPrices)
+    }
+  }
+
+  const handleRefreshData = async () => {
+    setRefreshing(true)
+    await clearReportCache()
+
+    // Refresh config
     try {
       const res = await fetch('/api/get-ticket-config')
       if (res.ok) {
@@ -291,7 +332,6 @@ export default function AdminPage() {
           cacheJson('ticketPrices', data.prices)
           cacheConfig('ticketPrices', data.prices)
         }
-        // populate ticketTypeRows from both
         const types = data.ticketTypes?.length ? data.ticketTypes : DEFAULT_TICKET_TYPES
         const prices = data.prices || INITIAL_TICKET_PRICES
         setTicketTypeRows(types.map((t: string) => ({ name: t, price: prices[t] || 0 })))
@@ -305,6 +345,16 @@ export default function AdminPage() {
       const cachedPrices = getCachedJson<Record<string, number>>('ticketPrices')
       if (cachedPrices) setTicketPrices(cachedPrices)
     }
+
+    // Re-fetch current view
+    if (view === 'dashboard') await fetchDashboard(true)
+    else if (view === 'laporan') await fetchSalesReport(reportFilter, reportStartDate, reportEndDate, true)
+    else if (view === 'laporan-pengunjung') await fetchVisitorReport(visitorReportFilter, visitorStartDate, visitorEndDate, true)
+    else if (view === 'transaksi') await fetchTransactions(txFilter, true)
+    else await fetchDashboard(true)
+
+    setRefreshing(false)
+    setRefreshUsed(true)
   }
 
   const fetchPrices = async () => {
@@ -326,18 +376,20 @@ export default function AdminPage() {
     }
   }
 
-  const fetchDashboard = async () => {
+  const fetchDashboard = async (forceRefresh = false) => {
     setLoading(true)
     setError(null)
 
-    const cached = getCachedData<AdminDashboardResponse>('adminDashboard')
-    if (cached) {
-      setStatus(cached.status)
-      setStats(cached.stats)
-      setRecentScans(cached.recentScans)
-      if (cached.todaySummary) setTodaySummary(cached.todaySummary)
-      setLoading(false)
-      return
+    if (!forceRefresh) {
+      const cached = await getCachedReport<AdminDashboardResponse>('admin-dashboard')
+      if (cached) {
+        setStatus(cached.status)
+        setStats(cached.stats)
+        setRecentScans(cached.recentScans)
+        if (cached.todaySummary) setTodaySummary(cached.todaySummary)
+        setLoading(false)
+        return
+      }
     }
 
     try {
@@ -370,9 +422,9 @@ export default function AdminPage() {
       setStats(payload.stats)
       setRecentScans(payload.recentScans)
       if (payload.todaySummary) setTodaySummary(payload.todaySummary)
-      cacheData('adminDashboard', payload)
+      await cacheReport('admin-dashboard', payload)
     } catch (err: any) {
-      const cachedDashboard = getCachedData<AdminDashboardResponse>('adminDashboard')
+      const cachedDashboard = await getCachedReport<AdminDashboardResponse>('admin-dashboard')
       if (cachedDashboard) {
         setStatus(cachedDashboard.status)
         setStats(cachedDashboard.stats)
@@ -387,15 +439,18 @@ export default function AdminPage() {
     }
   }
 
-  const fetchSalesReport = async (filter: string = reportFilter, startDate?: string, endDate?: string) => {
+  const fetchSalesReport = async (filter: string = reportFilter, startDate?: string, endDate?: string, forceRefresh = false) => {
     setReportLoading(true)
 
-    const cacheKey = `salesReport.${filter}${startDate && endDate ? `.${startDate}.${endDate}` : ''}`
-    const cached = getCachedData<any>(cacheKey)
-    if (cached) {
-      setSalesReport(cached)
-      setReportLoading(false)
-      return
+    const cacheKey = `sales-report:${filter}${startDate && endDate ? `:${startDate}:${endDate}` : ''}`
+
+    if (!forceRefresh) {
+      const cached = await getCachedReport<any>(cacheKey)
+      if (cached) {
+        setSalesReport(cached)
+        setReportLoading(false)
+        return
+      }
     }
 
     try {
@@ -410,11 +465,11 @@ export default function AdminPage() {
       const data = await res.json()
       if (res.ok) {
         setSalesReport(data)
-        cacheData(cacheKey, data)
+        await cacheReport(cacheKey, data)
       }
     } catch (err) {
       console.error('Failed to fetch sales report:', err)
-      const cachedReport = getCachedData<any>(cacheKey)
+      const cachedReport = await getCachedReport<any>(cacheKey)
       if (cachedReport) {
         setSalesReport(cachedReport)
       }
@@ -423,16 +478,19 @@ export default function AdminPage() {
     }
   }
 
-  const fetchVisitorReport = async (filter: string = visitorReportFilter, startDate?: string, endDate?: string) => {
+  const fetchVisitorReport = async (filter: string = visitorReportFilter, startDate?: string, endDate?: string, forceRefresh = false) => {
     setVisitorReportLoading(true)
     setError(null)
 
-    const cacheKey = `visitorReport.${filter}${startDate && endDate ? `.${startDate}.${endDate}` : ''}`
-    const cached = getCachedData<any>(cacheKey)
-    if (cached) {
-      setVisitorReport(cached)
-      setVisitorReportLoading(false)
-      return
+    const cacheKey = `visitor-report:${filter}${startDate && endDate ? `:${startDate}:${endDate}` : ''}`
+
+    if (!forceRefresh) {
+      const cached = await getCachedReport<any>(cacheKey)
+      if (cached) {
+        setVisitorReport(cached)
+        setVisitorReportLoading(false)
+        return
+      }
     }
 
     try {
@@ -452,12 +510,12 @@ export default function AdminPage() {
       const data = await res.json()
       if (res.ok) {
         setVisitorReport(data)
-        cacheData(cacheKey, data)
+        await cacheReport(cacheKey, data)
       } else {
         setError(data.error || 'Gagal memuat laporan pengunjung')
       }
     } catch (err: any) {
-      const cachedReport = getCachedData<any>(cacheKey)
+      const cachedReport = await getCachedReport<any>(cacheKey)
       if (cachedReport) {
         setVisitorReport(cachedReport)
       } else {
@@ -557,8 +615,8 @@ export default function AdminPage() {
             <p className="mt-1 text-xs text-slate-400">{offlineMode ? 'Mode offline aktif' : 'Online'}</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button onClick={fetchConfig} className="rounded-xl bg-white border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 shadow-card transition-all hover:border-slate-300 hover:shadow-card-hover active:scale-[0.97]" title="Refresh data dari server">
-              Refresh Data
+            <button onClick={handleRefreshData} disabled={refreshing || refreshUsed} className="rounded-xl bg-white border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 shadow-card transition-all hover:border-sky-300 hover:shadow-card-hover active:scale-[0.97] disabled:opacity-40" title="Refresh data dari server">
+              {refreshing ? 'Memuat...' : refreshUsed ? '✓ Data Diperbarui' : '↻ Refresh Data'}
             </button>
             <button onClick={handleLogout} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-card transition-all hover:border-slate-300 hover:shadow-card-hover active:scale-[0.97]">
               Logout
@@ -751,7 +809,7 @@ export default function AdminPage() {
                     <p className="text-sm text-slate-400">7 jam dan 5 hari terakhir</p>
                   </div>
                   <button
-                    onClick={fetchDashboard}
+                    onClick={() => fetchDashboard()}
                     disabled={loading}
                     className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-medium text-white shadow-card transition-all hover:bg-sky-700 hover:shadow-card-hover active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
                   >
@@ -817,7 +875,7 @@ export default function AdminPage() {
                     <p className="text-sm text-slate-400">Data langsung dari Firestore</p>
                   </div>
                   <button
-                    onClick={fetchDashboard}
+                    onClick={() => fetchDashboard()}
                     disabled={loading}
                     className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-medium text-white shadow-card transition-all hover:bg-sky-700 active:scale-[0.97] disabled:opacity-50"
                   >

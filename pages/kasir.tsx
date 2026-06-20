@@ -989,6 +989,7 @@ export default function KasirPage() {
                 </div>
               </div>
             )}
+
           </section>
         </div>
       </div>

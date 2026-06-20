@@ -1,8 +1,20 @@
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { getFirebaseIdToken, logoutFirebase, onFirebaseAuthStateChanged } from '@/lib/firebase'
-import { pullRemoteData } from '@/lib/offlineClient'
+import {
+  saveSuperAdminChange,
+  syncSuperAdminChanges,
+  getUnsyncedSuperAdminChanges,
+  applySuperAdminChangeToLocalData,
+  cacheReport,
+  getCachedReport,
+  clearReportCache,
+} from '@/lib/offlineClient'
+import type { SuperAdminChange } from '@/lib/types'
+
+const IDLE_TIMEOUT_MS = 5 * 60 * 1000
+const SYNC_CHECK_INTERVAL_MS = 30 * 1000
 
 export default function SuperAdminPage() {
   const router = useRouter()
@@ -31,14 +43,34 @@ export default function SuperAdminPage() {
   const [editFields, setEditFields] = useState<Record<string, any>>({})
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshUsed, setRefreshUsed] = useState(false)
+
+  // Sync state
+  const [pendingChanges, setPendingChanges] = useState<SuperAdminChange[]>([])
+  const [syncing, setSyncing] = useState(false)
+  const [syncMessage, setSyncMessage] = useState<string | null>(null)
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastActivityRef = useRef(Date.now())
 
   const showMessage = (type: 'success' | 'error', text: string) => {
     setMessage({ type, text })
     setTimeout(() => setMessage(null), 3000)
   }
 
-  const fetchSalesReport = async (filter = reportFilter, startDate?: string, endDate?: string) => {
+  const fetchSalesReport = async (filter = reportFilter, startDate?: string, endDate?: string, forceRefresh = false) => {
     setReportLoading(true)
+    const cacheKey = `sales-report:${filter}${startDate && endDate ? `:${startDate}:${endDate}` : ''}`
+
+    if (!forceRefresh) {
+      const cached = await getCachedReport<any>(cacheKey)
+      if (cached) {
+        setSalesReport(cached)
+        setReportLoading(false)
+        return
+      }
+    }
+
     try {
       const token = await getFirebaseIdToken()
       let url = `/api/sales-report?filter=${filter}`
@@ -48,14 +80,28 @@ export default function SuperAdminPage() {
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       if (res.status === 401) { await logoutFirebase(); router.replace('/superadmin-login'); return }
       const data = await res.json()
-      if (res.ok) setSalesReport(data)
+      if (res.ok) {
+        setSalesReport(data)
+        await cacheReport(cacheKey, data)
+      }
     } catch { showMessage('error', 'Gagal memuat laporan penjualan') }
     finally { setReportLoading(false) }
   }
 
-  const fetchVisitorReport = async (filter = visitorFilter, startDate?: string, endDate?: string) => {
+  const fetchVisitorReport = async (filter = visitorFilter, startDate?: string, endDate?: string, forceRefresh = false) => {
     setVisitorLoading(true)
     setError(null)
+    const cacheKey = `visitor-report:${filter}${startDate && endDate ? `:${startDate}:${endDate}` : ''}`
+
+    if (!forceRefresh) {
+      const cached = await getCachedReport<any>(cacheKey)
+      if (cached) {
+        setVisitorReport(cached)
+        setVisitorLoading(false)
+        return
+      }
+    }
+
     try {
       const token = await getFirebaseIdToken()
       let url = `/api/laporan-pengunjung?filter=${filter}`
@@ -65,7 +111,10 @@ export default function SuperAdminPage() {
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       if (res.status === 401) { await logoutFirebase(); router.replace('/superadmin-login'); return }
       const data = await res.json()
-      if (res.ok) setVisitorReport(data)
+      if (res.ok) {
+        setVisitorReport(data)
+        await cacheReport(cacheKey, data)
+      }
       else setError(data.error || 'Gagal memuat laporan pengunjung')
     } catch { setError('Gagal memuat laporan pengunjung') }
     finally { setVisitorLoading(false) }
@@ -95,6 +144,7 @@ export default function SuperAdminPage() {
           const data = await res.json()
           setUserEmail(data.email || user.email || null)
           setLoading(false)
+          refreshPendingCount()
         } catch {
           await logoutFirebase()
           router.replace('/login')
@@ -105,7 +155,87 @@ export default function SuperAdminPage() {
     return unsubscribe
   }, [router])
 
+  // Idle detection
+  useEffect(() => {
+    const resetIdleTimer = () => {
+      lastActivityRef.current = Date.now()
+      if (idleTimerRef.current) {
+        clearTimeout(idleTimerRef.current)
+      }
+      idleTimerRef.current = setTimeout(() => {
+        performSync()
+      }, IDLE_TIMEOUT_MS)
+    }
+
+    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll']
+    events.forEach(event => window.addEventListener(event, resetIdleTimer))
+    resetIdleTimer()
+
+    return () => {
+      events.forEach(event => window.removeEventListener(event, resetIdleTimer))
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
+    }
+  }, [])
+
+  // Periodic check for pending changes count
+  useEffect(() => {
+    const interval = setInterval(refreshPendingCount, SYNC_CHECK_INTERVAL_MS)
+    return () => clearInterval(interval)
+  }, [])
+
+  const refreshPendingCount = async () => {
+    try {
+      const changes = await getUnsyncedSuperAdminChanges()
+      setPendingChanges(changes)
+    } catch { /* silent */ }
+  }
+
+  const performSync = async () => {
+    if (syncing) return
+    setSyncing(true)
+    setSyncMessage('Menyinkronkan perubahan...')
+    try {
+      const token = await getFirebaseIdToken()
+      const result = await syncSuperAdminChanges(() => Promise.resolve(token))
+      if (result.synced > 0) {
+        setSyncMessage(`${result.synced} perubahan berhasil disinkronkan ke server`)
+        await clearReportCache()
+        refreshPendingCount()
+      } else if (result.errors.length > 0) {
+        setSyncMessage(`${result.errors.length} perubahan gagal disinkronkan`)
+      } else {
+        setSyncMessage(null)
+      }
+      if (result.errors.length > 0) {
+        console.error('Sync errors:', result.errors)
+      }
+    } catch (e: any) {
+      setSyncMessage('Gagal sinkron: ' + e.message)
+    } finally {
+      setSyncing(false)
+      setTimeout(() => setSyncMessage(null), 5000)
+    }
+  }
+
+  const handleRefreshData = async () => {
+    setRefreshing(true)
+    await clearReportCache()
+    if (view === 'penjualan') {
+      await fetchSalesReport(reportFilter, reportStartDate, reportEndDate, true)
+    } else {
+      await fetchVisitorReport(visitorFilter, visitorStartDate, visitorEndDate, true)
+    }
+    setRefreshing(false)
+    setRefreshUsed(true)
+    showMessage('success', 'Data diperbarui dari server')
+  }
+
   const handleLogout = async () => {
+    // Sync all pending changes before logout
+    try {
+      const token = await getFirebaseIdToken()
+      await syncSuperAdminChanges(() => Promise.resolve(token))
+    } catch { /* silent */ }
     await logoutFirebase()
     router.replace('/superadmin-login')
   }
@@ -123,85 +253,93 @@ export default function SuperAdminPage() {
   const saveTransaction = async (id: string) => {
     setSaving(true)
     try {
-      const token = await getFirebaseIdToken()
-      const res = await fetch('/api/manage-transaction', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ id, fields: editFields })
+      await applySuperAdminChangeToLocalData({
+        action: 'EDIT_TRANSACTION',
+        targetId: id,
+        collection: 'transactions',
+        fields: editFields,
       })
-      const data = await res.json()
-      if (res.ok) {
-        showMessage('success', 'Transaksi berhasil diperbarui')
-        cancelEdit()
-        fetchSalesReport()
-        getFirebaseIdToken().then(t => pullRemoteData(() => Promise.resolve(t)))
-      } else {
-        showMessage('error', data.error || 'Gagal menyimpan')
-      }
-    } catch { showMessage('error', 'Gagal terhubung ke server') }
+      await saveSuperAdminChange({
+        action: 'EDIT_TRANSACTION',
+        targetId: id,
+        collection: 'transactions',
+        fields: editFields,
+        summary: `Edit transaksi ${id.slice(0, 12)}: ${editFields.ticketType || ''} x ${editFields.quantity || ''}`,
+        superAdminEmail: userEmail || 'superadmin'
+      })
+      showMessage('success', 'Perubahan transaksi disimpan secara lokal')
+      cancelEdit()
+      refreshPendingCount()
+      fetchSalesReport()
+    } catch { showMessage('error', 'Gagal menyimpan perubahan') }
     finally { setSaving(false) }
   }
 
   const deleteTransaction = async (id: string) => {
     if (!confirm('Hapus transaksi ini?')) return
     try {
-      const token = await getFirebaseIdToken()
-      const res = await fetch('/api/manage-transaction', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ id })
+      await applySuperAdminChangeToLocalData({
+        action: 'DELETE_TRANSACTION',
+        targetId: id,
+        collection: 'transactions',
       })
-      if (res.ok) {
-        showMessage('success', 'Transaksi berhasil dihapus')
-        fetchSalesReport()
-        getFirebaseIdToken().then(t => pullRemoteData(() => Promise.resolve(t)))
-      } else {
-        const data = await res.json()
-        showMessage('error', data.error || 'Gagal menghapus')
-      }
-    } catch { showMessage('error', 'Gagal terhubung ke server') }
+      await saveSuperAdminChange({
+        action: 'DELETE_TRANSACTION',
+        targetId: id,
+        collection: 'transactions',
+        summary: `Hapus transaksi ${id.slice(0, 12)}`,
+        superAdminEmail: userEmail || 'superadmin'
+      })
+      showMessage('success', 'Penghapusan transaksi disimpan secara lokal')
+      refreshPendingCount()
+      fetchSalesReport()
+    } catch { showMessage('error', 'Gagal menyimpan perubahan') }
   }
 
   const saveScanLog = async (id: string) => {
     setSaving(true)
     try {
-      const token = await getFirebaseIdToken()
-      const res = await fetch('/api/manage-scanlog', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ id, fields: editFields })
+      await applySuperAdminChangeToLocalData({
+        action: 'EDIT_SCANLOG',
+        targetId: id,
+        collection: 'scanLogs',
+        fields: editFields,
       })
-      const data = await res.json()
-      if (res.ok) {
-        showMessage('success', 'Scan log berhasil diperbarui')
-        cancelEdit()
-        fetchVisitorReport()
-        getFirebaseIdToken().then(t => pullRemoteData(() => Promise.resolve(t)))
-      } else {
-        showMessage('error', data.error || 'Gagal menyimpan')
-      }
-    } catch { showMessage('error', 'Gagal terhubung ke server') }
+      await saveSuperAdminChange({
+        action: 'EDIT_SCANLOG',
+        targetId: id,
+        collection: 'scanLogs',
+        fields: editFields,
+        summary: `Edit scan log ${id}: ${editFields.uid || ''} di ${editFields.gate || ''}`,
+        superAdminEmail: userEmail || 'superadmin'
+      })
+      showMessage('success', 'Perubahan scan log disimpan secara lokal')
+      cancelEdit()
+      refreshPendingCount()
+      fetchVisitorReport()
+    } catch { showMessage('error', 'Gagal menyimpan perubahan') }
     finally { setSaving(false) }
   }
 
   const deleteScanLog = async (id: string) => {
     if (!confirm('Hapus scan log ini?')) return
     try {
-      const token = await getFirebaseIdToken()
-      const res = await fetch('/api/manage-scanlog', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ id })
+      await applySuperAdminChangeToLocalData({
+        action: 'DELETE_SCANLOG',
+        targetId: id,
+        collection: 'scanLogs',
       })
-      if (res.ok) {
-        showMessage('success', 'Scan log berhasil dihapus')
-        fetchVisitorReport()
-        getFirebaseIdToken().then(t => pullRemoteData(() => Promise.resolve(t)))
-      } else {
-        const data = await res.json()
-        showMessage('error', data.error || 'Gagal menghapus')
-      }
-    } catch { showMessage('error', 'Gagal terhubung ke server') }
+      await saveSuperAdminChange({
+        action: 'DELETE_SCANLOG',
+        targetId: id,
+        collection: 'scanLogs',
+        summary: `Hapus scan log ${id}`,
+        superAdminEmail: userEmail || 'superadmin'
+      })
+      showMessage('success', 'Penghapusan scan log disimpan secara lokal')
+      refreshPendingCount()
+      fetchVisitorReport()
+    } catch { showMessage('error', 'Gagal menyimpan perubahan') }
   }
 
   if (!authInitialized) {
@@ -220,8 +358,38 @@ export default function SuperAdminPage() {
             <span className="text-xs font-semibold uppercase tracking-[0.25em] text-indigo-600">Super Admin Panel</span>
             <h1 className="mt-1.5 text-2xl font-bold text-slate-900">Manajemen Data</h1>
             {userEmail ? <p className="mt-1.5 text-sm text-slate-400">Masuk sebagai {userEmail}</p> : null}
+            <div className="mt-1 flex items-center gap-2">
+              {pendingChanges.length > 0 ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  {pendingChanges.length} perubahan belum tersinkron
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  Tersinkronisasi
+                </span>
+              )}
+              {syncMessage ? (
+                <span className="text-[10px] text-slate-400">{syncMessage}</span>
+              ) : null}
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
+            <button
+              onClick={handleRefreshData}
+              disabled={refreshing || refreshUsed}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-card transition-all hover:border-sky-300 hover:shadow-card-hover active:scale-[0.97] disabled:opacity-40"
+            >
+              {refreshing ? 'Memuat...' : refreshUsed ? '✓ Data Diperbarui' : '↻ Refresh Data'}
+            </button>
+            <button
+              onClick={performSync}
+              disabled={syncing || pendingChanges.length === 0}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-card transition-all hover:border-slate-300 hover:shadow-card-hover active:scale-[0.97] disabled:opacity-40"
+            >
+              {syncing ? 'Menyinkronkan...' : `Sinkron (${pendingChanges.length})`}
+            </button>
             <button onClick={handleLogout} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-card transition-all hover:border-slate-300 hover:shadow-card-hover active:scale-[0.97]">
               Logout
             </button>

@@ -50,9 +50,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       scanEntry.ticketType = ticketType || 'Tiket Harian'
     }
 
-    await db.collection('scanLogs').add(scanEntry)
+    const ref = await db.collection('scanLogs').add(scanEntry)
 
-    return res.status(200).json({ result: 'OK' })
+    return res.status(200).json({ result: 'OK', scanLogId: ref.id })
   } catch (error: any) {
     console.error('/api/kasir-gate-scan error:', error)
     return res.status(500).json({ error: error.message || 'Internal server error' })
